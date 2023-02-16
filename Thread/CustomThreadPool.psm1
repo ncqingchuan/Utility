@@ -26,7 +26,7 @@ class CustomThreadPool {
             }
 
             [powershell]$shell = [powershell]::Create().AddScript($script)
-            if ($null -ne $parameters -or $parameters.Count -lt 0 ) { $shell.AddParameters($parameters) }
+            if ($null -ne $parameters -and $parameters.Count -gt 0 ) { $shell.AddParameters($parameters) }
             $shell.RunspacePool = $this.pool
             return [CustomThreadPoolData]::new($shell, $shell.BeginInvoke())
         }
