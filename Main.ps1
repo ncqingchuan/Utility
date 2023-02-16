@@ -2,7 +2,7 @@ using Module .\Thread\CustomThreadPool.psm1
 
 Import-Module -Force -Name .\Data\Datasource.psm1
 $path = [System.IO.Path]::Combine($PSScriptRoot, "Data", "Datasource.psm1")
-$connectionString = "Data Source=192.168.0.4;Initial Catalog=master;UID=sa;PWD="
+$connectionString = "Data Source=192.168.0.4;Initial Catalog=master;UID=sa;PWD=;max pool size=5"
 $sql = "SELECT * FROM sys.objects where object_id=@objectId"
 
 if ($PSVersionTable.PSEdition -eq "Core") {
@@ -38,7 +38,7 @@ $script = {
     }  
 }
 
-[CustomThreadPool]$pool = [CustomThreadPool]::new(5, 5, $Host)
+[CustomThreadPool]$pool = [CustomThreadPool]::new(3, 3, $Host)
 $jobs = @()
 1..30 | ForEach-Object { 
     $parameters.objectId = $_
