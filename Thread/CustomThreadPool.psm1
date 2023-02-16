@@ -5,15 +5,15 @@ class CustomThreadPool {
     [RunspacePool] hidden $pool
 
     CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize, [PSHost] $psHost) {
-        if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -lt $maxPoolSize)) {
-            throw [System.ArgumentException]::new()
+        if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -gt $maxPoolSize)) {
+            throw [System.ArgumentException]::new("minPoolSize and maxPoolSize must be greater than 0 and maxPoolSize must be greater than minPoolSize.")
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $psHost)
     }
 
     CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize) {
-        if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -lt $maxPoolSize)) {
-            throw [System.ArgumentException]::new()
+        if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -gt $maxPoolSize)) {
+            throw [System.ArgumentException]::new("minPoolSize and maxPoolSize must be greater than 0 and maxPoolSize must be greater than minPoolSize.")
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize)
     }
