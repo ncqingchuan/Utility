@@ -156,7 +156,7 @@ function Get-ExecuteNonQuery {
                 $p.Value = $cmd.Parameters[$p.ParameterName].Value
             }            
         }        
-        if ($null -ne $connection -and (-not $close)) { $connection.Close() }
+        if ($null -ne $connection -and $close) { $connection.Close() }
     }    
 }
 
@@ -187,7 +187,7 @@ function Get-ExecuteScalar {
                 $p.value = $cmd.Parameters[$p.ParameterName].Value
             }            
         }     
-        if ($null -ne $connection -and (-not $close)) { $connection.Close() }
+        if ($null -ne $connection -and $close) { $connection.Close() }
     }    
 }
 
@@ -214,11 +214,20 @@ function Get-ExecuteReader {
         do {            
             $tempList = @()      
             while ($reader.Read()) {
+
                 $property = [Ordered]@{}
-                for ($i = 0; $i -lt $reader.FieldCount; $i++) { $property.($reader.GetName($i)) = $reader.GetValue($i) }
+
+                for ($i = 0; $i -lt $reader.FieldCount; $i++) {
+                    $name = $reader.GetName($i)
+
+                    if ([string]::IsNullOrWhiteSpace($name)) {
+                        $name = "Column$i"
+                    }
+                    $property.($name) = $reader.GetValue($i) 
+                }
                 $tempList += New-Object psobject -Property $property
             }
-            $resultList.("Table$($j)") = $tempList; $j++           
+            $resultList.("List$($j)") = $tempList; $j++           
         } while ($reader.NextResult())
    
         return $resultList 
@@ -235,7 +244,7 @@ function Get-ExecuteReader {
                 }                
             }    
         }
-        if ($null -ne $Connection -and (-not $close)) { $Connection.Close() }        
+        if ($null -ne $Connection -and $close) { $Connection.Close() }        
     }    
 }
 
@@ -286,6 +295,6 @@ function Get-Schema {
                 }                
             }    
         }
-        if ($null -ne $Connection -and (-not $close)) { $Connection.Close() }        
+        if ($null -ne $Connection -and $close) { $Connection.Close() }        
     }    
 }
