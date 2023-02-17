@@ -7,36 +7,38 @@ function Get-DbConnection {
         [string]$providerName = ("System.Data.SqlClient"),
         [string]$connectionString
     )
-    try {
-        if (-not [string]::IsNullOrWhiteSpace($ProviderFile)) {
-            [Assembly]$assembly = [Assembly]::LoadFrom($ProviderFile)
 
-            if ($PSVersionTable.PSEdition -eq "Core") {
-                [type]$type = $assembly.GetTypes() | Where-Object { [DbProviderFactory].IsAssignableFrom($_) } | Select-Object -First 1
-            }
-            else {
-                [type]$type = $assembly.GetExportedTypes() | Where-Object { [DbProviderFactory].IsAssignableFrom($_) } | Select-Object -First 1
-            }
-            
-            if (!$type) {
-                throw "not implement DbProviderFactory class"
-            }
-            [FieldInfo]$fieldInfo = $type.GetField("Instance", [BindingFlags]::Public -bor [BindingFlags]::Static)
-            if (!$fieldInfo) {
-                throw "this class is not contain 'Instance' static field."
-            }
-            [DbProviderFactory]$Factory = $fieldInfo.GetValue($null)
+    if (-not [string]::IsNullOrWhiteSpace($ProviderFile)) {
+
+        [Assembly]$assembly = [Assembly]::LoadFrom($ProviderFile)
+
+        if ($PSVersionTable.PSEdition -eq "Core") {
+            [type]$type = $assembly.GetTypes() | Where-Object { [DbProviderFactory].IsAssignableFrom($_) } | Select-Object -First 1
         }
         else {
-            [DbProviderFactory]$Factory = [DbProviderFactories]::GetFactory($providerName)  
-        }        
-        $con = $Factory.CreateConnection()
-        $con.ConnectionString = $ConnectionString
-        $con
+            [type]$type = $assembly.GetExportedTypes() | Where-Object { [DbProviderFactory].IsAssignableFrom($_) } | Select-Object -First 1
+        }
+            
+        if (!$type) {
+            throw "It's not implement DbProviderFactory class"
+        }
+        [FieldInfo]$fieldInfo = $type.GetField("Instance", [BindingFlags]::Public -bor [BindingFlags]::Static)
+        if (!$fieldInfo) {
+            throw "This class is not contain 'Instance' static field."
+        }
+        [DbProviderFactory]$Factory = $fieldInfo.GetValue($null)
+
     }
-    catch {
-        throw $_
+    else {
+        [DbProviderFactory]$Factory = [DbProviderFactories]::GetFactory($providerName)  
     }
+    if ($null -eq $Factory) {
+        throw "Don't get DbProviderFactory from this Assemblly"
+    }
+    $connection = $Factory.CreateConnection()
+    $connection.ConnectionString = $ConnectionString
+    return $connection
+
 }
 
 function Get-DbCommand {
@@ -72,7 +74,7 @@ function Get-DbCommand {
     return $cmd
 }
 
-function Get-NewParameter {
+function Get-DbParameter {
     <#
     .SYNOPSIS
     创建SQL参数
@@ -144,8 +146,7 @@ function Get-ExecuteNonQuery {
         [System.Data.Common.DbCommand]$cmd = Get-DbCommand -conenction $Connection -commandText $commandText -commandType $commandType `
             -parameters $parameters -commandTimeout $commandTimeout -transaction $transaction
         if ($connection.State -ne [System.Data.ConnectionState]::Open) { $connection.Open() }
-        $effect = $cmd.ExecuteNonQuery()
-        $effect 
+        return  $cmd.ExecuteNonQuery()
     }
     catch {
         throw $_
@@ -175,8 +176,7 @@ function Get-ExecuteScalar {
         [System.Data.Common.DbCommand]$cmd = Get-DbCommand -conenction $Connection -commandText $commandText -commandType $commandType `
             -parameters $parameters -commandTimeout $commandTimeout -transaction $transaction
         if ($connection.State -ne [System.Data.ConnectionState]::Open) { $connection.Open() }
-        $obj = $cmd.ExecuteScalar()
-        return $obj
+        return $cmd.ExecuteScalar()
     }
     catch {
         throw $_
@@ -186,7 +186,7 @@ function Get-ExecuteScalar {
             if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput)) {
                 $p.value = $cmd.Parameters[$p.ParameterName].Value
             }            
-        }     
+        }
         if ($null -ne $connection -and (-not $close)) { $connection.Close() }
     }    
 }
@@ -205,7 +205,7 @@ function Get-ExecuteReader {
         [System.Data.Common.DbTransaction]$transaction = $null,
         [switch]$close
     )
-    $resultList = [Ordered]@{}; $j = 0
+    $resultList = @{}; $j = 0
     try {
         [System.Data.Common.DbCommand]$cmd = Get-DbCommand -conenction $Connection -commandText $commandText -commandType $commandType `
             -parameters $parameters -commandTimeout $commandTimeout -transaction $transaction
@@ -215,12 +215,17 @@ function Get-ExecuteReader {
             $tempList = @()      
             while ($reader.Read()) {
                 $property = [Ordered]@{}
-                for ($i = 0; $i -lt $reader.FieldCount; $i++) { $property.($reader.GetName($i)) = $reader.GetValue($i) }
+                for ($i = 0; $i -lt $reader.FieldCount; $i++) {
+                    $name = $reader.GetName($i)
+                    if ([string]::IsNullOrWhiteSpace($name)) {
+                        $name = "Column$($i)"
+                    }               
+                    $property.($name) = $reader.GetValue($i)                                   
+                }
                 $tempList += New-Object psobject -Property $property
             }
-            $resultList.("Table$($j)") = $tempList; $j++           
-        } while ($reader.NextResult())
-   
+            $resultList.("List$($j)") = $tempList; $j++           
+        } while ($reader.NextResult())   
         return $resultList 
     }
     catch {
@@ -260,12 +265,12 @@ function Get-Schema {
         if ($connection.State -ne [System.Data.ConnectionState]::Open) { $connection.Open() }
         $reader = $cmd.ExecuteReader([System.Data.CommandBehavior]::SchemaOnly)
         do {
-            $table = $reader.GetSchemaTable()
+            $schemaTable = $reader.GetSchemaTable()
             $tempList = @()      
-            foreach ($row in $table.Rows) {
+            foreach ($row in $schemaTable.Rows) {
                 $properties = [ordered]@{}
-                for ($i = 0; $i -lt $table.Columns.Count; $i++) {
-                    $properties.($table.Columns[$i]) = $row[$i]
+                for ($i = 0; $i -lt $schemaTable.Columns.Count; $i++) {
+                    $properties.($schemaTable.Columns[$i]) = $row[$i]
                 }
                 $tempList += New-Object psobject -Property $properties
             }

@@ -1,6 +1,6 @@
 using namespace System.Management.Automation.Runspaces
 using namespace System.Management.Automation.Host
-class CustomThreadPool {
+class CustomThreadPool:System.IDisposable {
    
     [RunspacePool] hidden $pool
 
@@ -9,6 +9,7 @@ class CustomThreadPool {
             throw [System.ArgumentException]::new("minPoolSize and maxPoolSize must be greater than 0 and maxPoolSize must be greater than minPoolSize.")
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $psHost)
+        $this.pool.Open()
     }
 
     CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize) {
@@ -16,25 +17,22 @@ class CustomThreadPool {
             throw [System.ArgumentException]::new("minPoolSize and maxPoolSize must be greater than 0 and maxPoolSize must be greater than minPoolSize.")
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize)
+        $this.pool.Open()
     }
 
     [CustomThreadPoolData] BeginInvoke([scriptblock] $script, [HashTable] $parameters) {
         try {
-
-            if ($this.pool.RunspacePoolStateInfo.State -ne [RunspacePoolState]::Opened) {
-                $this.pool.Open()
-            }
-
             [powershell]$shell = [powershell]::Create().AddScript($script)
-            if ($null -ne $parameters -and $parameters.Count -gt 0 ) { $shell.AddParameters($parameters) }
+            if ( -not ($null -eq $parameters -or $parameters.Count -eq 0) ) { 
+                $shell.AddParameters($parameters) 
+            }
             $shell.RunspacePool = $this.pool
             return [CustomThreadPoolData]::new($shell, $shell.BeginInvoke())
         }
         catch {
             throw $_
             $this.pool.Close()
-        }     
-
+        }
     }
 
     [System.Object] EndInvoke([CustomThreadPoolData[]] $jobs) {
@@ -43,18 +41,36 @@ class CustomThreadPool {
             foreach ($job in $jobs) {
                 $results += $job.Shell.EndInvoke($job.AsyncResult)
             }
-            return $results
+            return $results 
         }
         catch {
             throw $_
         }
         finally {
-            $this.pool.Close()
+            $this.Close()
+        }
+    }
+    [System.Object] EndInvoke([CustomThreadPoolData] $job) {
+        try {
+           
+            return $job.Shell.EndInvoke($job.AsyncResult)
+        }
+        catch {
+            throw $_
+        }
+        finally {
+            $this.Close()
         }
     }
 
-    [void] Close() {
+    [void] hidden Close() {
         $this.pool.Close()
+    }
+
+    [void] hidden Dispose() {
+        $this.Close()
+        $this.pool.Dispose()
+        $this.pool = $null
     }
 }
 
