@@ -43,6 +43,6 @@ $jobs = @()
 [CustomThreadPool]$pool = [CustomThreadPool]::new(10, 15, $Host)
 1..20 | ForEach-Object { 
     $parameters.objectId = $_
-    $jobs += $pool.BeginInvoke( $script, $parameters )
+    $jobs += $pool.BeginInvoke( $script, $parameters)
 }
 $pool.EndInvoke($jobs).List0 

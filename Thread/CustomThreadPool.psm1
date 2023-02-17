@@ -44,7 +44,7 @@ class CustomThreadPool:System.IDisposable {
             foreach ($job in $jobs) {
                 $results += $job.Shell.EndInvoke($job.AsyncResult)
             }
-            return $results
+            return $results 
         }
         catch {
             throw $_
@@ -60,7 +60,6 @@ class CustomThreadPool:System.IDisposable {
 
     [void] hidden Dispose() {
         $this.Close()
-
     }
 }
 
