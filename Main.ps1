@@ -31,7 +31,7 @@ $script = {
     try {
         Import-Module -Name $path -Force
         $connection = Get-DbConnection -connectionString $connectionString -providerFile $lib
-        $p1 = Get-NewParameter -parameterName "objectId" -value $objectId -dbType Int32
+        $p1 = Get-DbParameter -parameterName "objectId" -value $objectId -dbType Int32
         Get-ExecuteReader -connection $connection -commandText $sql -parameters $p1 -close
     }
     catch {
