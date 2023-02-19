@@ -1,10 +1,8 @@
 using Module .\Thread\CustomThreadPool.psm1
 
 $parameters = @{
-    connectionString = $connectionString;
-    sql              = $sql;
-    debug            = $false;
-    object_id        = 0
+    debug     = $true;
+    object_id = 0;
 }
 
 $jobs = @()
