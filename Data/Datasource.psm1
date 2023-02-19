@@ -125,7 +125,7 @@ function Get-DbParameter {
         [bool]$isNullable = $true
         
     )
-    
+
     return New-Object psobject -Property ([Ordered]@{ parameterName = $parameterName; direction = $direction; value = $value; size = $size; `
                 scale = $scale; precision = $precision; dbType = $dbType ; isNullable = $isNullable 
         })

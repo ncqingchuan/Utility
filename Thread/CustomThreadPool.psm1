@@ -24,8 +24,9 @@ class CustomThreadPool:System.IDisposable {
     }
 
     [CustomThreadPoolData] BeginInvoke([scriptblock] $script, [HashTable] $parameters) {
+        [powershell]$shell = $null
         try {
-            [powershell]$shell = [powershell]::Create().AddScript($script)
+            $shell = [powershell]::Create().AddScript($script)
             if (-not ($null -eq $parameters -or $parameters.Count -eq 0) ) { 
                 [void]$shell.AddParameters($parameters) 
             }
@@ -33,20 +34,46 @@ class CustomThreadPool:System.IDisposable {
             return [CustomThreadPoolData]::new($shell, $shell.BeginInvoke())
         }
         catch {
+            $shell.Dispose()
             $this.Close()
+            throw $_
+        }
+    }
+
+    [CustomThreadPoolData] BeginInvoke([string] $scriptPath, [HashTable] $parameters) {
+        [powershell]$shell = $null
+        
+        try {
+            [Command] $cmd = [Command]::new($scriptPath)
+            if (-not ($null -eq $parameters -or $parameters.Count -eq 0) ) { 
+                foreach ($kv in $parameters.Keys) {
+                    [void]$cmd.Parameters.Add($kv, $parameters.$kv)
+                }
+            }
+            $shell = [powershell]::Create()
+            $shell.RunspacePool = $this.pool
+            $shell.Commands.AddCommand($cmd)
+            return [CustomThreadPoolData]::new($shell, $shell.BeginInvoke())
+        }
+        catch {
+            $shell.Dispose() 
+            $this.Close()                       
             throw $_
         }
     }
 
     [System.Object] EndInvoke([CustomThreadPoolData[]] $jobs) {
         $results = @()
+        [CustomThreadPoolData]$job = $null
         try {
             foreach ($job in $jobs) {
                 $results += $job.Shell.EndInvoke($job.AsyncResult)
+                $job.Shell.Dispose()
             }
             return $results 
         }
         catch {
+            $job.Shell.Dispose()
             throw $_
         }
         finally {
