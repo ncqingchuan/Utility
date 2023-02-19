@@ -7,8 +7,8 @@ param(
 if ($debug -eq $true) {
     $DebugPreference = "continue"
 }
-$connectionString = "Data Source=SqlServer;Initial Catalog=master;UID=sa;PWD=;max pool size=15;"
-$sql = "SELECT @objectId ,@@SPID,USER_ID() AS [User],@@version AS Version"
+$connectionString = "Data Source=qingchuan;Initial Catalog=master;Integrated Security=true;max pool size=15;"
+$sql = "SELECT @objectId Paramter ,@@SPID SPID,USER_ID() AS [User],@@version AS Version"
 
 $path = [System.IO.Path]::Combine($PSScriptRoot, "Data", "Datasource.psm1")
 Import-Module -Name $path -Force
@@ -30,4 +30,5 @@ try {
 catch {
     Write-Host $_.Exception.Message
 }
+Start-Sleep -Seconds 2
 Write-Debug "End at: $((Get-Date).ToString(""HH:mm:ss.ffffff""))"

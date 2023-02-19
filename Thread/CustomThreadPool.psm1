@@ -1,5 +1,6 @@
 using namespace System.Management.Automation.Runspaces
 using namespace System.Management.Automation.Host
+using namespace System.Management.Automation
 class CustomThreadPool:System.IDisposable {
    
     [RunspacePool] hidden $pool
@@ -46,8 +47,8 @@ class CustomThreadPool:System.IDisposable {
         try {
             [Command] $cmd = [Command]::new($scriptPath)
             if (-not ($null -eq $parameters -or $parameters.Count -eq 0) ) { 
-                foreach ($kv in $parameters.Keys) {
-                    [void]$cmd.Parameters.Add($kv, $parameters.$kv)
+                foreach ($key in $parameters.Keys) {
+                    [void]$cmd.Parameters.Add($key, $parameters.$key)
                 }
             }
             $shell = [powershell]::Create()
@@ -62,7 +63,7 @@ class CustomThreadPool:System.IDisposable {
         }
     }
 
-    [System.Object] EndInvoke([CustomThreadPoolData[]] $jobs) {
+    [PSDataCollection[psobject][]] EndInvoke([CustomThreadPoolData[]] $jobs) {
         $results = @()
         [CustomThreadPoolData]$job = $null
         try {
@@ -99,5 +100,4 @@ class CustomThreadPoolData {
         $this.Shell = $Shell
         $this.AsyncResult = $AsyncResult
     }
-
 }
