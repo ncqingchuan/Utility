@@ -1,15 +1,13 @@
 param(
     [string] $connectionString,
-    [string]$sql,
-    [bool] $debug,
-    [int]$objectId
+    [int]$objectId,
+    [switch] $debug
 )
 if ($debug -eq $true) {
     $DebugPreference = "continue"
 }
-$connectionString = "Data Source=qingchuan;Initial Catalog=master;Integrated Security=true;max pool size=15;"
-$sql = "SELECT @objectId Paramter ,@@SPID SPID,USER_ID() AS [User],@@version AS Version"
 
+$sql = "SELECT @objectId Paramter ,@@SPID SPID,USER_ID() AS [User]"
 $path = [System.IO.Path]::Combine($PSScriptRoot, "Data", "Datasource.psm1")
 Import-Module -Name $path -Force
 
@@ -20,15 +18,20 @@ else {
     $lib = [System.IO.Path]::Combine($PSScriptRoot, "lib", "System.Data.dll")
 }
 
-Write-Debug "Start at: $((Get-Date).ToString(""HH:mm:ss.ffffff""))"
-try {
 
+try {
+    Write-Debug "Start at: $((Get-Date).ToString(""HH:mm:ss.ffffff""))"
     $connection = Get-DbConnection -connectionString $connectionString -providerFile $lib
     $p1 = Get-DbParameter -parameterName "objectId" -value $objectId -dbType Int32
-    Get-ExecuteReader -connection $connection -commandText $sql -parameters $p1 -close
+    $result = Get-ExecuteReader -connection $connection -commandText $sql -parameters $p1 -close
+    Write-Debug "End at: $((Get-Date).ToString(""HH:mm:ss.ffffff""))"
+    return @{Code = 0; Data = $result }
 }
 catch {
-    Write-Host $_.Exception.Message
+    Write-Debug "Exception:$($_.Exception.Message)"
+    return @{Code = 1; Data = (New-Object psobject -Property @{
+                Message  = $_.Exception.Message;
+                ObjectId = $objectId 
+            }) 
+    }
 }
-Start-Sleep -Seconds 2
-Write-Debug "End at: $((Get-Date).ToString(""HH:mm:ss.ffffff""))"
