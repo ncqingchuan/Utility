@@ -1,14 +1,18 @@
 using Module .\Thread\CustomThreadPool.psm1
 
+$path = "$($PSScriptRoot)\result.txt"
+
 $parameters = @{
-    debug     = $true;
-    object_id = 0;
+    Path   = $path;
+    Number = 0
 }
 
 $jobs = @()
 [CustomThreadPool]$pool = [CustomThreadPool]::new(5, 10, $Host)
+
+
 1..10 | ForEach-Object {
-    $parameters.objectId = $_
-    $jobs += $pool.BeginInvoke( "./example.ps1", $parameters)
+    $parameters.Number = $_
+    $jobs += $pool.BeginInvoke( "$($PSScriptRoot)\Monitor.ps1", $parameters)
 }
-$pool.EndInvoke($jobs).List0
+$pool.EndInvoke($jobs)

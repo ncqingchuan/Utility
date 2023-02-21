@@ -3,7 +3,7 @@ using namespace System.Management.Automation.Host
 using namespace System.Management.Automation
 class CustomThreadPool:System.IDisposable {
    
-    [RunspacePool] hidden $pool
+    [RunspacePool]  $pool
 
     CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize, [PSHost] $psHost) {
         if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -gt $maxPoolSize)) {
@@ -12,15 +12,8 @@ class CustomThreadPool:System.IDisposable {
         if ($null -eq $psHost) {
             throw "The value of psHost cannot be null."
         }
-        $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $psHost)
-        $this.pool.Open()
-    }
-
-    CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize) {
-        if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -gt $maxPoolSize)) {
-            throw "minPoolSize and maxPoolSize must be greater than 0 ,and maxPoolSize must be greater than minPoolSize."
-        }
-        $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize)
+        [initialsessionstate] $sessionState = [initialsessionstate]::CreateDefault()
+        $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $sessionState, $psHost)
         $this.pool.Open()
     }
 
@@ -61,6 +54,17 @@ class CustomThreadPool:System.IDisposable {
             $this.Close()                       
             throw $_
         }
+    }
+
+    [void] AddVariables([HashTable] $variables) {
+        foreach ($key in $variables.Keys) {
+            [SessionStateVariableEntry]$entry = [SessionStateVariableEntry]::new($key, $variables.$key, $null)
+            $this.pool.InitialSessionState.Variables.Add($entry)
+        }
+    }
+
+    [void] ImportPSModules([string[]] $modulesPaths) {
+        $this.pool.InitialSessionState.ImportPSModule($modulesPaths)
     }
 
     [PSDataCollection[psobject][]] EndInvoke([CustomThreadPoolData[]] $jobs) {

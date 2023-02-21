@@ -1,6 +1,4 @@
 param(
-    [string] $connectionString,
-    [string]$sql,
     [bool] $debug,
     [int]$objectId
 )
