@@ -3,16 +3,16 @@ param(
     [string] $Path, 
     [int] $Number) 
 
-[bool]$b = $false
+[bool]$lockTaken = $false
 try {
-    [Monitor]::Enter($Path, [ref] $b)
+    [Monitor]::Enter($Path, [ref] $lockTaken)
     Add-Content -Path $Path -Value $Number
 }
 catch [System.Exception] {
     throw $_
 }
 finally {
-    if ($b -eq $true) {
+    if ($lockTaken -eq $true) {
         [Monitor]::Exit($Path)
     }
 }
