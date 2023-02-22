@@ -6,6 +6,7 @@ if ($debug -eq $true) {
     $DebugPreference = "continue"
 }
 
+$connectionString="you seeting"
 $sql = "SELECT @objectId Paramter ,@@SPID SPID,USER_ID() AS [User]"
 $path = [System.IO.Path]::Combine($PSScriptRoot, "Data", "Datasource.psm1")
 Import-Module -Name $path -Force

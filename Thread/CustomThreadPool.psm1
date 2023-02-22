@@ -17,6 +17,17 @@ class CustomThreadPool:System.IDisposable {
         $this.pool.Open()
     }
 
+    CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize, [initialsessionstate]$initSession, [PSHost] $psHost) {
+        if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -gt $maxPoolSize)) {
+            throw "minPoolSize and maxPoolSize must be greater than 0 ,and maxPoolSize must be greater than minPoolSize."
+        }
+        if ($null -eq $psHost) {
+            throw "The value of psHost cannot be null."
+        }
+        $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $initSession, $psHost)
+        $this.pool.Open()
+    }
+
     [CustomThreadPoolData] BeginInvoke([scriptblock] $script, [HashTable] $parameters) {
         [powershell]$shell = $null
         try {
@@ -56,15 +67,8 @@ class CustomThreadPool:System.IDisposable {
         }
     }
 
-    [void] AddVariables([HashTable] $variables) {
-        foreach ($key in $variables.Keys) {
-            [SessionStateVariableEntry]$entry = [SessionStateVariableEntry]::new($key, $variables.$key, $null)
-            $this.pool.InitialSessionState.Variables.Add($entry)
-        }
-    }
-
-    [void] ImportPSModules([string[]] $modulesPaths) {
-        $this.pool.InitialSessionState.ImportPSModule($modulesPaths)
+    [void] ImportPSModule([string[]]$modules) {
+        $this.pool.InitialSessionState.ImportPSModule($modules)
     }
 
     [PSDataCollection[psobject][]] EndInvoke([CustomThreadPoolData[]] $jobs) {
@@ -73,6 +77,28 @@ class CustomThreadPool:System.IDisposable {
         try {
             foreach ($job in $jobs) {
                 $results += $job.Shell.EndInvoke($job.AsyncResult)
+                $job.Shell.Dispose()
+            }
+            return $results 
+        }
+        catch {
+            $job.Shell.Dispose()
+            throw $_
+        }
+        finally {
+            $this.Close()
+        }
+    }
+
+    [PSDataCollection[psobject][]] EndInvoke([CustomThreadPoolData[]] $jobs, [scriptblock] $processCallback) {
+        $results = @()
+        [CustomThreadPoolData]$job = $null
+        try {
+            foreach ($job in $jobs) {
+                $results += $job.Shell.EndInvoke($job.AsyncResult)
+                if ($null -ne $processCallback) {
+                    . $processCallback
+                }
                 $job.Shell.Dispose()
             }
             return $results 
@@ -104,4 +130,23 @@ class CustomThreadPoolData {
         $this.Shell = $Shell
         $this.AsyncResult = $AsyncResult
     }
+}
+
+
+class CustomInitialSession {
+    
+    [initialsessionstate] static hidden $session = [initialsessionstate]::CreateDefault()
+    [initialsessionstate] static ImportPSModule([string[]]$modules) {
+        [CustomInitialSession]::session.ImportPSModule($modules)
+        return [CustomInitialSession]::session
+    }
+
+    [initialsessionstate] static AddVariables([HashTable] $variables) {
+        foreach ($key in $variables.Keys) {
+            [SessionStateVariableEntry]$entry = [SessionStateVariableEntry]::new($key, $variables.$key, $null)
+            [CustomInitialSession]::session.Variables.Add($entry)
+        }
+        return [CustomInitialSession]::session
+    }
+
 }
