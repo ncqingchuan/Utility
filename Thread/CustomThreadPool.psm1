@@ -16,7 +16,7 @@ class CustomThreadPool:System.IDisposable {
         $this.pool.Open()
     }
 
-    CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize, [initialsessionstate]$initSession, [PSHost] $psHost) {
+    CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize, [CustomInitialSession]$initSession, [PSHost] $psHost) {
         if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -gt $maxPoolSize)) {
             throw "minPoolSize and maxPoolSize must be greater than 0 ,and maxPoolSize must be greater than minPoolSize."
         }
@@ -24,10 +24,10 @@ class CustomThreadPool:System.IDisposable {
             throw "The value of psHost cannot be null."
         }
 
-        if ($null -eq $psHost) {
+        if ($null -eq $initSession) {
             throw "The value of initSession cannot be null."
         }
-        $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $initSession, $psHost)
+        $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $initSession.Session, $psHost)
         $this.pool.Open()
     }
 
