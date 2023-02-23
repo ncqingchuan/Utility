@@ -3,7 +3,7 @@ using namespace System.Management.Automation.Host
 using namespace System.Management.Automation
 class CustomThreadPool:System.IDisposable {
    
-    [RunspacePool]  $pool
+    [RunspacePool] hidden $pool
 
     CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize, [PSHost] $psHost) {
         if ($minPoolSize -lt 0 -or $maxPoolSize -lt 0 -or ($minPoolSize -gt $maxPoolSize)) {
@@ -12,8 +12,7 @@ class CustomThreadPool:System.IDisposable {
         if ($null -eq $psHost) {
             throw "The value of psHost cannot be null."
         }
-        [initialsessionstate] $sessionState = [initialsessionstate]::CreateDefault()
-        $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $sessionState, $psHost)
+        $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $psHost)
         $this.pool.Open()
     }
 
@@ -23,6 +22,10 @@ class CustomThreadPool:System.IDisposable {
         }
         if ($null -eq $psHost) {
             throw "The value of psHost cannot be null."
+        }
+
+        if ($null -eq $psHost) {
+            throw "The value of initSession cannot be null."
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $initSession, $psHost)
         $this.pool.Open()
@@ -134,19 +137,34 @@ class CustomThreadPoolData {
 
 
 class CustomInitialSession {
+    [initialsessionstate]  hidden $_session 
+    CustomInitialSession () {
+        $this._session = [initialsessionstate]::CreateDefault()
+        $this | Add-Member -MemberType ScriptProperty -Name 'Session' -Value {
+            return $this._session
+        }  -SecondValue {
+            throw 'This is a readonly property.'
+        } 
+    }
     
-    [initialsessionstate] static hidden $session = [initialsessionstate]::CreateDefault()
-    [initialsessionstate] static ImportPSModule([string[]]$modules) {
-        [CustomInitialSession]::session.ImportPSModule($modules)
-        return [CustomInitialSession]::session
+    [CustomInitialSession]  AddModules([string[]]$modules) {
+        $this._session.ImportPSModule($modules)
+        return $this
     }
 
-    [initialsessionstate] static AddVariables([HashTable] $variables) {
+    [CustomInitialSession]  AddVariables([HashTable] $variables) {
         foreach ($key in $variables.Keys) {
             [SessionStateVariableEntry]$entry = [SessionStateVariableEntry]::new($key, $variables.$key, $null)
-            [CustomInitialSession]::session.Variables.Add($entry)
+            $this._session.Variables.Add($entry)
         }
-        return [CustomInitialSession]::session
+        return $this
     }
 
+    [CustomInitialSession] AddAssemblies([HashTable] $assemblies) {
+        foreach ($key in $assemblies.Keys) {
+            [SessionStateAssemblyEntry]$entry = [SessionStateAssemblyEntry]::new($key, $assemblies.$key)
+            $this._session.Assemblies.Add($entry)
+        }
+        return $this
+    }
 }

@@ -8,8 +8,7 @@ try {
     Lock-Object $($Path) {
         Add-Content -Path $Path -Value $Number -ErrorAction Stop
     }
-
 }
 catch [System.Exception] {
-    Write-Host -$_.Exception.Message
+    Write-Host $_.Exception.Message
 }
