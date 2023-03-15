@@ -1,33 +1,23 @@
 param(
-    [bool] $debug,
-    [int]$objectId
+    [int]$objectId,
+    [string]$lock,
+    [string]$connectionString
 )
-if ($debug -eq $true) {
-    $DebugPreference = "continue"
-}
 
-$sql = "SELECT @objectId Paramter ,@@SPID SPID,USER_ID() AS [User]"
-$connectionString = 'Data Source=qingchuan;Initial Catalog=master;Uid=sa;pwd='
-
-if ($PSVersionTable.PSEdition -eq "Core") {
-    $lib = [System.IO.Path]::Combine($PSScriptRoot, "lib", "System.Data.SqlClient.dll")
-}
-else {
-    $lib = [System.IO.Path]::Combine($PSScriptRoot, "lib", "System.Data.dll")
-}
-
+$sql = "p_Get_Return_Value"
 try {
-    Write-Debug "Start at: $((Get-Date).ToString(""HH:mm:ss.ffffff""))"
-    $connection = Get-DbConnection -connectionString $connectionString -providerFile $lib
-    $p1 = Get-DbParameter -parameterName "objectId" -value $objectId -dbType Int32
-    $result = Get-ExecuteReader -connection $connection -commandText $sql -parameters $p1 -close
-    return @{Code = 0; Data = $result }
+    $connection = Get-DbConnection -connectionString $connectionString
+    $p1 = Get-DbParameter -parameterName "@returnValue" -dbType Int32 -direction ([System.Data.ParameterDirection]::ReturnValue)
+    $p2 = Get-DbParameter -parameterName "@objectId" -dbType Int32 -value $objectId
+    Get-ExecuteNonQuery -connection $connection -commandText $sql -parameters $p1, $p2 -close -commandType StoredProcedure | Out-Null
+    Lock-Object ($lock) {
+        Add-Content -Path $lock -Value $objectId
+    }
+    return $true
 }
 catch {
-    Write-Debug "Exception:$($_.Exception.Message)"
-    return @{Code = 1; Data = (New-Object psobject -Property @{
-                Message  = $_.Exception.Message;
-                ObjectId = $objectId 
-            }) 
+    Lock-Object ($lock) {
+        Add-Content -Path $lock -Value $_.Exception.Message
     }
+    return $false
 }

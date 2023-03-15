@@ -13,7 +13,6 @@ class CustomThreadPool:System.IDisposable {
             throw "The value of psHost cannot be null."
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $psHost)
-        $this.pool.Open()
     }
 
     CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize, [CustomInitialSession]$initSession, [PSHost] $psHost) {
@@ -28,12 +27,12 @@ class CustomThreadPool:System.IDisposable {
             throw "The value of initSession cannot be null."
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $initSession.Session, $psHost)
-        $this.pool.Open()
     }
 
     [CustomThreadPoolData] BeginInvoke([scriptblock] $script, [HashTable] $parameters) {
         [powershell]$shell = $null
         try {
+            $this.pool.Open()
             $shell = [powershell]::Create().AddScript($script)
             if (-not ($null -eq $parameters -or $parameters.Count -eq 0) ) { 
                 [void]$shell.AddParameters($parameters) 
@@ -52,6 +51,7 @@ class CustomThreadPool:System.IDisposable {
         [powershell]$shell = $null
         
         try {
+            $this.pool.Open()
             [Command] $cmd = [Command]::new($scriptPath)
             if (-not ($null -eq $parameters -or $parameters.Count -eq 0) ) { 
                 foreach ($key in $parameters.Keys) {
@@ -143,8 +143,8 @@ class CustomInitialSession {
         $this | Add-Member -MemberType ScriptProperty -Name 'Session' -Value {
             return $this._session
         }  -SecondValue {
-            throw 'This is a readonly property.'
-        } 
+            throw  'This is a readonly property.'
+        } -ErrorAction Ignore
     }
     
     [CustomInitialSession]  AddModules([string[]]$modules) {

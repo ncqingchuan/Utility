@@ -153,7 +153,7 @@ function Get-ExecuteNonQuery {
     }
     finally {
         foreach ($p in $parameters ) {
-            if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput)) {
+            if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput, [ParameterDirection]::ReturnValue)) {
                 $p.Value = $cmd.Parameters[$p.ParameterName].Value
             }            
         }        
@@ -183,7 +183,7 @@ function Get-ExecuteScalar {
     }
     finally {
         foreach ($p in $parameters ) {
-            if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput)) {
+            if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput, [ParameterDirection]::ReturnValue)) {
                 $p.value = $cmd.Parameters[$p.ParameterName].Value
             }            
         }     
@@ -239,7 +239,7 @@ function Get-ExecuteReader {
         if ($null -ne $reader) {
             $reader.Close()
             foreach ($p in $parameters ) {
-                if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput)) {
+                if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput, [ParameterDirection]::ReturnValue)) {
                     $p.Value = $cmd.Parameters[$p.ParameterName].Value
                 }                
             }    
@@ -290,7 +290,7 @@ function Get-Schema {
         if ($null -ne $reader) {
             $reader.Close()
             foreach ($p in $parameters ) {
-                if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput)) {
+                if ($p.direction -in @([System.Data.ParameterDirection]::Output, [System.Data.ParameterDirection]::InputOutput), [ParameterDirection]::ReturnValue) {
                     $p.Value = $cmd.Parameters[$p.ParameterName].Value
                 }                
             }    
