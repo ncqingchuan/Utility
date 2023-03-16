@@ -15,7 +15,7 @@ try {
             [System.Object]$sender,
             [System.Data.SqlClient.SqlInfoMessageEventArgs] $e
         )
-        $Message = $e.Errors
+        $Message = $e.Errors 
     } 
     $p1 = Get-DbParameter -parameterName "@returnValue" -dbType Int32 -direction ([System.Data.ParameterDirection]::ReturnValue)
     $p2 = Get-DbParameter -parameterName "@objectId" -dbType Int32 -value $objectId
