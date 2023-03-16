@@ -13,6 +13,7 @@ class CustomThreadPool:System.IDisposable {
             throw "The value of psHost cannot be null."
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $psHost)
+        $this.pool.Open()
     }
 
     CustomThreadPool([int]$minPoolSize, [int] $maxPoolSize, [CustomInitialSession]$initSession, [PSHost] $psHost) {
@@ -27,12 +28,12 @@ class CustomThreadPool:System.IDisposable {
             throw "The value of initSession cannot be null."
         }
         $this.pool = [runspacefactory]::CreateRunspacePool($minPoolSize, $maxPoolSize, $initSession.Session, $psHost)
+        $this.pool.Open()
     }
 
     [CustomThreadPoolData] BeginInvoke([scriptblock] $script, [HashTable] $parameters) {
         [powershell]$shell = $null
-        try {
-            $this.pool.Open()
+        try {            
             $shell = [powershell]::Create().AddScript($script)
             if (-not ($null -eq $parameters -or $parameters.Count -eq 0) ) { 
                 [void]$shell.AddParameters($parameters) 
@@ -41,17 +42,15 @@ class CustomThreadPool:System.IDisposable {
             return [CustomThreadPoolData]::new($shell, $shell.BeginInvoke())
         }
         catch {
-            $shell.Dispose()
+            if ($null -ne $shell) { $shell.Dispose() }
             $this.Close()
             throw $_
         }
     }
 
     [CustomThreadPoolData] BeginInvoke([string] $scriptPath, [HashTable] $parameters) {
-        [powershell]$shell = $null
-        
+        [powershell]$shell = $null        
         try {
-            $this.pool.Open()
             [Command] $cmd = [Command]::new($scriptPath)
             if (-not ($null -eq $parameters -or $parameters.Count -eq 0) ) { 
                 foreach ($key in $parameters.Keys) {
@@ -64,7 +63,7 @@ class CustomThreadPool:System.IDisposable {
             return [CustomThreadPoolData]::new($shell, $shell.BeginInvoke())
         }
         catch {
-            $shell.Dispose() 
+            if ($null -ne $shell) { $shell.Dispose() }
             $this.Close()                       
             throw $_
         }

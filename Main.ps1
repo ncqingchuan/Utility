@@ -12,12 +12,12 @@ $modules = "$($PSScriptRoot)\Thread\LockObject.psm1", "$($PSScriptRoot)\Data\Dat
 
 [CustomInitialSession]$session = [CustomInitialSession]::new()
 $session = $session.AddModules($modules)
-[CustomThreadPool]$pool = [CustomThreadPool]::new(10, 15, $session, $Host)
+[CustomThreadPool]$pool = [CustomThreadPool]::new(3, 5, $session, $Host)
 
 $jobs = @()
 1..100 | ForEach-Object {
     $parameters.objectId = $_
     $jobs += $pool.BeginInvoke( $scriptPath, $parameters)
 }
-$pool.EndInvoke($jobs)
+$pool.EndInvoke($jobs) | Out-Null
 
