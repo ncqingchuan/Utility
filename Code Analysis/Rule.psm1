@@ -71,9 +71,9 @@ class PDE002 :BaseRule {
             $fromClause.AcceptChildren($childVisitor)
             $destTable = $childVisitor.TableAlias | Where-Object { $_.Alias -eq $targetTable } | Select-Object -First 1
             if ($destTable.TableName -imatch "^(@|#{1,2}){1}") { return }
-
-            $qualifiedJoin = $fromClause.TableReferences[0] -as [QualifiedJoin]
-            if ($null -ne $qualifiedJoin) { return }
+            foreach ($tableReference in $fromClause.TableReferences) {
+                if ($tableReference -is [QualifiedJoin]) { return }
+            }
         }
         $this.Validate($node, $false)
     }
@@ -93,7 +93,7 @@ class PDE003:BaseRule {
         [ChildVisitor]$childVisitor = [ChildVisitor]::new()
 
         $target = $node.Target
-        
+
         if ($target -is [VariableTableReference]) { return }
 
         [NamedTableReference] $namedTableReference = $target -as [NamedTableReference]
