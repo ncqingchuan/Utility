@@ -57,11 +57,10 @@ class PDE002 :BaseRule {
     [void] Visit([UpdateDeleteSpecificationBase] $node) {
         [ChildVisitor]$childVisitor = [ChildVisitor]::new()
         $target = $node.Target
-        $variableTableReference = $target -as [VariableTableReference]
 
         if ($null -ne $node.WhereClause) { return }
 
-        if ($null -ne $variableTableReference) { return }
+        if ($target -is [VariableTableReference]) { return }
         
         [NamedTableReference] $namedTableReference = $target -as [NamedTableReference]
         $targetTable = $namedTableReference.SchemaObject.BaseIdentifier.Value
@@ -94,8 +93,8 @@ class PDE003:BaseRule {
         [ChildVisitor]$childVisitor = [ChildVisitor]::new()
 
         $target = $node.Target
-        $variableTableReference = $target -as [VariableTableReference]
-        if ($null -ne $variableTableReference) { return }
+        
+        if ($target -is [VariableTableReference]) { return }
 
         [NamedTableReference] $namedTableReference = $target -as [NamedTableReference]
         $targetTable = $namedTableReference.SchemaObject.BaseIdentifier.Value

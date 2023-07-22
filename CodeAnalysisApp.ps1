@@ -4,8 +4,8 @@ $code = @"
 USE DB
 GO
 Select * from Test;
-DELETE FROM TEST;
-SELECT A FROM M;
+DELETE A FROM TEST A ;
+SELECT A INTO RD FROM M;
 
 "@
 
@@ -16,5 +16,5 @@ if ($parseResult.ParseError) {
 }
 if (-not $parseResult.ParseError) {
     $result = $parser.Anlysis()
-    $result | ConvertTo-Json -Depth 5
+    $result.Rules
 }
