@@ -298,3 +298,6 @@ function Get-Schema {
         if ($null -ne $Connection -and $close) { $Connection.Close() }        
     }    
 }
+
+
+Export-ModuleMember -Function Get-DbConnection, Get-DbParameter, Get-ExecuteNonQuery, Get-ExecuteReader, Get-ExecuteScalar, Get-Schema
