@@ -112,9 +112,8 @@ class PDE003:BaseRule {
 
     [void] Visit([InsertSpecification]$node) {
         $target = $node.Target
+        if ($target -is [VariableTableReference]) { return }
 
-        $variableTableReference = $target -as [VariableTableReference]
-        if ($null -ne $variableTableReference) { return }
         $namedTableReference = $target -as [NamedTableReference]
         if ($namedTableReference.SchemaObject.BaseIdentifier.Value -imatch "^#{1,2}") { return }
         $valuesInsertSource = $node.InsertSource -as [ValuesInsertSource]
@@ -126,8 +125,7 @@ class PDE003:BaseRule {
     [void] Visit([MergeSpecification]$node) {
         $target = $node.Target
 
-        $variableTableReference = $target -as [VariableTableReference]
-        if ($null -ne $variableTableReference) { return }
+        if ($target -is [VariableTableReference]) { return }
         $namedTableReference = $target -as [NamedTableReference]
         if ($namedTableReference.SchemaObject.BaseIdentifier.Value -imatch "^#{1,2}") { return }
 

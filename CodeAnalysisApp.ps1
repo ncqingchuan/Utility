@@ -5,8 +5,8 @@ USE DB
 GO
 Select * from Test;
 DELETE A FROM TEST A ;
+go
 SELECT A INTO RD FROM M;
-
 "@
 
 [CustomParser]$parser = [CustomParser]::new([SqlEngineVersion]::SQL2016, [SqlEngineType]::All)
