@@ -1,7 +1,7 @@
 using module '.\Code Analysis\Rule.psm1'
 using namespace Microsoft.SqlServer.TransactSql.ScriptDom
 
-$files = Get-ChildItem -Path E:\BackupE\QueryFile -Filter "*.sql"
+$files = Get-ChildItem -Path "E:\BackupE\QueryFile" -Filter "*.sql" -File
 $results = @()
 $parserrors = @()
 foreach ($file in $files) {
@@ -10,14 +10,16 @@ foreach ($file in $files) {
     if ($parseError.Count -gt 0) {
         $parserrors += ($parseError | Select-Object -Property *, @{name = "File"; expression = { $file.FullName } })
     }
-    else {   
+    else {
+        $ValidationResults = @()
         foreach ($rule in [CustomParser]::GetAllRules()) {
             $rule.Validate($parser)
             if (-not $parser.ValidationResult.Validated) {
-                $results += (  $parser.ValidationResult | Select-Object -Property *, @{name = "File"; expression = { $file.FullName } })
+                $ValidationResults += $parser.ValidationResult
             }
         }
+        $results += [PSCustomObject]@{  File = $file.FullName; ValidationResults = $ValidationResults }
     }
 }
 
-$results
+$results | Where-Object { $_.ValidationResults.Count -gt 0 } |  ConvertTo-Json -Depth 5

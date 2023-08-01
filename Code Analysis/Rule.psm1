@@ -19,8 +19,7 @@ class ValidationResult {
         } -SecondValue {
             throw "The Validated property is readonly."
         }
-    }
-   
+    }   
 }
 
 class AnalysisCodeResult {
@@ -34,35 +33,41 @@ class AnalysisCodeResult {
 
 class BaseRule:TSqlFragmentVisitor {
 
-    [string]$RuleName
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
-    hidden [AnalysisCodeResult] $AnalysisCodeResult
+    hidden [AnalysisCodeResult[]] $AnalysisCodeResults
+    hidden [string] $Additional
 
-    [Object] $Additional = $null
+    BaseRule() {
+        $this | Add-Member -Name "RuleName" -MemberType ScriptProperty -Value {
+            return  $this.GetType().Name
+        } -SecondValue {
+            throw "The RuleName property is readonly."
+        }
+    }
 
     hidden [void] Validate([TSqlFragment] $node, [bool] $Validated) {
-        $text = $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty
-        $endLine = $node.ScriptTokenStream[$node.LastTokenIndex].Line
-        $this.AnalysisCodeResult = [AnalysisCodeResult]::new()
-        $this.AnalysisCodeResult.StartLine = $node.StartLine
-        $this.AnalysisCodeResult.EndLine = $endLine
-        $this.AnalysisCodeResult.Text = $text
-        $this.AnalysisCodeResult.StartColumn = $node.StartColumn
+        $AnalysisCodeResult = [AnalysisCodeResult]::new()
+        $AnalysisCodeResult.StartLine = $node.StartLine
+        $AnalysisCodeResult.EndLine = $node.ScriptTokenStream[$node.LastTokenIndex].Line
+        $AnalysisCodeResult.Text = $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty
+        $AnalysisCodeResult.StartColumn = $node.StartColumn
+        $AnalysisCodeResult.Additional = $this.Additional
+        $this.AnalysisCodeResults += $AnalysisCodeResult
     }
 
     [void]Validate([CustomParser]$parser) {
+        $this.AnalysisCodeResults = @()
         $parser.ValidationResult = [ValidationResult]::new()
         $parser.ValidationResult.RuleName = $this.RuleName
         $parser.ValidationResult.Descrtiption = $this.Descrtiption        
         $parser.Accept($this)
-        $parser.ValidationResult.AnalysisCodeResults += $this.AnalysisCodeResult
+        $parser.ValidationResult.AnalysisCodeResults = $this.AnalysisCodeResults
     }
 }
 
 class PDE001: BaseRule {
     PDE001() {
-        $this.RuleName = [PDE001].Name
         $this.Descrtiption = "Asterisk in select list."
         $this.Severity = [Severity]::Warning
     }
@@ -74,7 +79,6 @@ class PDE001: BaseRule {
 
 class PDE002 :BaseRule {    
     PDE002() {
-        $this.RuleName = [PDE002].Name
         $this.Descrtiption = "Delete or Update statement without Where or INNER JOIN clause."
         $this.Severity = [Severity]::Exception
     }
@@ -106,7 +110,6 @@ class PDE002 :BaseRule {
 
 class PDE003:BaseRule {
     PDE003() {
-        $this.RuleName = [PDE003].Name
         $this.Descrtiption = "You should use batch operations in statements."
         $this.Severity = [Severity]::Exception
     }
@@ -132,7 +135,7 @@ class PDE003:BaseRule {
             $destTable = $childVisitor.TableAlias | Where-Object { $_.Alias -eq $targetTable } | Select-Object -First 1
             if ($destTable.TableName -imatch "^(@|#{1,2}){1}") { return }
         }
-        $this.Validate($node)
+        $this.CheckWhile($node)
     }
 
     [void] Visit([InsertSpecification]$node) {
@@ -144,7 +147,7 @@ class PDE003:BaseRule {
         $valuesInsertSource = $node.InsertSource -as [ValuesInsertSource]
         if ($null -ne $valuesInsertSource) { return }
 
-        $this.Validate($node)
+        $this.CheckWhile($node)
     }
 
     [void] Visit([MergeSpecification]$node) {
@@ -154,15 +157,16 @@ class PDE003:BaseRule {
         $namedTableReference = $target -as [NamedTableReference]
         if ($namedTableReference.SchemaObject.BaseIdentifier.Value -imatch "^#{1,2}") { return }
 
-        $this.Validate($node)   
+        $this.CheckWhile($node)   
     }
 
     [void] Visit([WhileStatement]$node) {
         $this.start = $node.StartLine
         $this.end = $node.ScriptTokenStream[$node.LastTokenIndex].Line
     }
-    hidden [void] Validate([TSqlFragment] $node) {
-        if (-not ($node.StartLine -ge $this.start -and $node.StartLine -le $this.end)) {            
+
+    hidden [void] CheckWhile([TSqlFragment] $node) {
+        if (-not ($node.StartLine -ge $this.start -and $node.ScriptTokenStream[$node.LastTokenIndex].Line -le $this.end)) {            
             $this.Validate($node, $false)
         }
         $this.start = $this.end = 0
@@ -171,7 +175,6 @@ class PDE003:BaseRule {
 
 class PDE004:BaseRule {
     PDE004() {
-        $this.RuleName = [PDE004].Name
         $this.Descrtiption = "statement with drop table or drop database clause."
         $this.Severity = [Severity]::Fault
     }
@@ -188,7 +191,6 @@ class PDE004:BaseRule {
 }
 class PDE005:BaseRule {
     PDE005() {
-        $this.RuleName = [PDE005].Name
         $this.Descrtiption = "SELECT statement with INTO clause."
         $this.Severity = [Severity]::Warning
     }
@@ -243,7 +245,6 @@ class CustomParser {
 
     hidden [TSqlParser] $TSqlParser
     hidden [TSqlFragment]$Tree
-    hidden [string] $File
     hidden [AnalysisType] $AnalysisType
     [ValidationResult] $ValidationResult
     
@@ -270,16 +271,11 @@ class CustomParser {
     }
 
     hidden [TextReader] GetReader([string] $codeOrFile) {
-        [TextReader]$reader = $null;
-        $this.File = [string]::Empty
-        if ([File]::Exists($codeOrFile)) {
-            $reader = [StreamReader]::new($codeOrFile)
-            $this.File = $codeOrFile
-            $this.AnalysisType = [AnalysisType]::File
+        [TextReader]$reader = if ([File]::Exists($codeOrFile)) {
+            [StreamReader]::new($codeOrFile)
         }
         else {
-            $reader = [StringReader]::new($codeOrFile)
-            $this.AnalysisType = [AnalysisType]::Code
+            [StringReader]::new($codeOrFile)
         }
         return $reader
     }
@@ -302,7 +298,9 @@ class CustomParser {
     }
 
     [void]Accept([BaseRule]$rule) {
-        $this.Tree.Accept($rule)
+        if ($null -ne $this.Tree) {
+            $this.Tree.Accept($rule)
+        }
     }
 
     static  [BaseRule[]] GetAllRules() {
