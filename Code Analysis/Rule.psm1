@@ -4,34 +4,59 @@ using namespace System.Collections.Generic
 using namespace System.IO
 using namespace Management.Automation
 using namespace System.Reflection
+
+
+class ValidationResult {
+    [AnalysisCodeResult[]]$AnalysisCodeResults = @()
+    [string] $RuleName
+    [string] $Descrtiption
+
+    ValidationResult() {
+        $this | Add-Member -Name "Validated" -MemberType ScriptProperty -Value {
+            ($this.AnalysisCodeResults.Count -eq 0) -or ($this.AnalysisCodeResults | Where-Object {
+                    -not $_.$Validated
+                }).Count -eq 0
+        } -SecondValue {
+            throw "The Validated property is readonly."
+        }
+    }
+   
+}
+
+class AnalysisCodeResult {
+    [int]$StartLine
+    [int] $EndLine
+    [bool]$Validated
+    [string]$Text
+    [string]$Additional
+    [int] $StartColumn
+}
+
 class BaseRule:TSqlFragmentVisitor {
 
     [string]$RuleName
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
-    $AnalysisResults = @()
+    hidden [AnalysisCodeResult] $AnalysisCodeResult
 
     [Object] $Additional = $null
-    BaseRule() {
-        $this | Add-Member -MemberType ScriptProperty -Name "Validated" -Value {
-            return $this.AnalysisResults.Count -eq 0 
-        } -SecondValue {
-            throw "The Validated property is readonly."
-        }
-    }
 
-    [void] Validate([TSqlFragment] $node, [bool] $Validated) {
-        if ($Validated) { return }
-
+    hidden [void] Validate([TSqlFragment] $node, [bool] $Validated) {
         $text = $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty
         $endLine = $node.ScriptTokenStream[$node.LastTokenIndex].Line
-        $this.AnalysisResults += [PSCustomObject]([ordered]@{
-                StartLine   = $node.StartLine;
-                StartColumn = $node.StartColumn;
-                EndLine     = $endLine;
-                Text        = $text;
-                Additional  = $this.Additional
-            })
+        $this.AnalysisCodeResult = [AnalysisCodeResult]::new()
+        $this.AnalysisCodeResult.StartLine = $node.StartLine
+        $this.AnalysisCodeResult.EndLine = $endLine
+        $this.AnalysisCodeResult.Text = $text
+        $this.AnalysisCodeResult.StartColumn = $node.StartColumn
+    }
+
+    [void]Validate([CustomParser]$parser) {
+        $parser.ValidationResult = [ValidationResult]::new()
+        $parser.ValidationResult.RuleName = $this.RuleName
+        $parser.ValidationResult.Descrtiption = $this.Descrtiption        
+        $parser.Accept($this)
+        $parser.ValidationResult.AnalysisCodeResults += $this.AnalysisCodeResult
     }
 }
 
@@ -201,13 +226,7 @@ class ChildVisitor:TSqlFragmentVisitor {
     }
 
 }
-enum SqlEngineVersion {
-    SQL2014 = 120
-    SQL2016 = 130
-    SQL2017 = 140
-    SQL2019 = 150
-    SQL2022 = 160
-}
+
 
 enum Severity {
     Information = 1
@@ -226,14 +245,14 @@ class CustomParser {
     hidden [TSqlFragment]$Tree
     hidden [string] $File
     hidden [AnalysisType] $AnalysisType
-    hidden static [BaseRule[]]$rules = [CustomParser]::GetAllRules()
+    [ValidationResult] $ValidationResult
     
-    CustomParser([SqlEngineVersion]$version, [SqlEngineType]$engineType) {
+    CustomParser([SqlVersion]$version, [SqlEngineType]$engineType) {
         switch ($version) {
-            SQL2014 { $this.TSqlParser = [TSql120Parser]::new($true) }
-            SQL2016 { $this.TSqlParser = [TSql130Parser]::new($true, $engineType) }
-            SQL2017 { $this.TSqlParser = [TSql140Parser]::new($true, $engineType) }
-            SQL2019 { $this.TSqlParser = [TSql150Parser]::new($true, $engineType) }
+            [SqlVersion]::Sql120 { $this.TSqlParser = [TSql120Parser]::new($true) }
+            [SqlVersion]::Sql130 { $this.TSqlParser = [TSql130Parser]::new($true, $engineType) }
+            [SqlVersion]::Sql140 { $this.TSqlParser = [TSql140Parser]::new($true, $engineType) }
+            [SqlVersion]::Sql150 { $this.TSqlParser = [TSql150Parser]::new($true, $engineType) }
             Default { $this.TSqlParser = [TSql160Parser]::new($true, $engineType) }
         }
 
@@ -287,35 +306,11 @@ class CustomParser {
 
     }
 
-    [psobject] Anlysis([BaseRule]$rule) {
-        $rule.AnalysisResults = @()
+    [void]Accept([BaseRule]$rule) {
         $this.Tree.Accept($rule)
-        return [PSCustomObject]([ordered]@{
-                RuleName        = $rule.RuleName;
-                Descrtiption    = $rule.Descrtiption;
-                Severity        = $rule.Severity;
-                Validated       = $rule.Validated;
-                AnalysisType    = $this.AnalysisType;
-                AnalysisResults = $rule.AnalysisResults
-            })
     }
 
-    [psobject] Anlysis() {
-        $results = @()        
-        foreach ($rule in [CustomParser]::rules) {
-            $result = $this.Anlysis($rule)
-            if (-not $result.Validated) {
-                $results += $result
-            }
-        }
-        return [PSCustomObject]([ordered]@{
-                File      = $this.File; 
-                Validated = ($results.Count -eq 0 -or ($results | Where-Object { -not $_.Validated }).Count -eq 0); 
-                Rules     = $results; 
-            })
-    }
-
-    hidden static  [BaseRule[]] GetAllRules() {
+    static  [BaseRule[]] GetAllRules() {
         return [Assembly]::GetAssembly([BaseRule]).GetTypes() | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } | ForEach-Object { New-Object $_ }
     }
 }
