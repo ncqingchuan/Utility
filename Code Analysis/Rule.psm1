@@ -284,18 +284,13 @@ class CustomParser {
         return $reader
     }
 
-    [psobject] Parse([string] $codeOrFile) {
+    [ParseError[]] Parse([string] $codeOrFile) {
         [TextReader]$reader = $null
         [List[ParseError]]$errors = @()
         try {
             $reader = $this.GetReader($codeOrFile)
             $this.Tree = $this.TSqlParser.Parse($reader, [ref] $errors)
-            return [PSCustomObject]([ordered]@{
-                    File       = $this.File; 
-                    Errors     = $errors; 
-                    ParseError = ($errors.Count -gt 0) 
-                }
-            )
+            return $errors
         }
         catch {
             throw $_
