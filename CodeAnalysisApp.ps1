@@ -8,7 +8,7 @@ foreach ($file in $files) {
     [CustomParser]$parser = [CustomParser]::new([SqlVersion]::Sql130, [SqlEngineType]::All)
     $parseError = $parser.Parse($file.FullName)
     if ($parseError.Count -gt 0) {
-        $parserrors += ($parseError | Select-Object -Property *, @{name = "File"; expression = { $file.FullName } })
+        $parserrors += [PSCustomObject]@{  File = $file.FullName; ParseErrors = $parseError }
     }
     else {
         $ValidationResults = @()
@@ -22,4 +22,4 @@ foreach ($file in $files) {
     }
 }
 
-$results | Where-Object { $_.ValidationResults.Count -gt 0 } |  ConvertTo-Json -Depth 5
+$results | Where-Object { $_.ValidationResults.Count -gt 0 } 
