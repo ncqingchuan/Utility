@@ -12,11 +12,11 @@ class CustomParser {
     $AnalysisCodeSummary = [PSCustomObject]([ordered]@{
             ResponseCode      = [ResponseCode]::Success;
             ResponseMessage   = "Success";
-            ParseErrors       = @();
-            IsDocument        = $true;
             FileName          = $null;
-            Code              = $null;
             DocumentName      = $null;
+            Code              = $null;
+            IsDocument        = $true;
+            ParseErrors       = @();
             ValidationResults = @()
         })
 
@@ -44,25 +44,23 @@ class CustomParser {
         } -SecondValue {
             throw "The Batches property is readonly."
         }
-
-        $this | Add-Member -MemberType ScriptProperty -Name "DocumentName" -Value {
-            return if ([string]::IsNullOrWhiteSpace($this.FileName)) { $null } else { [Path]::GetFileName($this.FileName) }
-        } -SecondValue {
-            throw "The DocumentName property is readonly."
-        }
     }
 
     [void] Parse() {
 
         $this.AnalysisCodeSummary.FileName = $this.FileName
-        $this.AnalysisCodeSummary.IsDocument = $this.IsDocument
-        $this.AnalysisCodeSummary.Code = $this.Code
-        $this.AnalysisCodeSummary.DocumentName = $this.DocumentName
+        $this.AnalysisCodeSummary.IsDocument = $this.IsDocument 
+        $this.AnalysisCodeSummary.DocumentName = [Path]::GetFileName($this.FileName)
 
         [TextReader]$reader = $null
-        [List[ParseError]]$errors = @()
+        [ParseError[]]$errors = @()
+        if ($this.IsDocument) {
+            $this.Code = Get-Content -Path $this.FileName -Encoding utf8 | Out-String
+        }
+        $this.AnalysisCodeSummary.Code = $this.Code
+
         try {
-            $reader = if ($this.IsDocument) { [StreamReader]::new($this.FileName) }else { [StringReader]::new($this.Code) }
+            $reader = [StringReader]::new($this.Code) 
             $this.Tree = $this.TSqlParser.Parse($reader, [ref] $errors)
         }
         catch {
@@ -158,7 +156,7 @@ class PDE001: BaseRule {
     }
 
     [void] Visit([SelectStarExpression] $node) {
-        $this.Validate($node, $false)
+        $this.Validate($node, $false, $null)
     }
 }
 

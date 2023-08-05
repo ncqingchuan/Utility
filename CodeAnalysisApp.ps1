@@ -1,7 +1,7 @@
 using module '.\Code Analysis\Rule.psm1'
 using namespace Microsoft.SqlServer.TransactSql.ScriptDom
 
-$files = Get-ChildItem -Path "E:\BackupE\QueryFile" -Filter "*.sql" -File
+$files = Get-ChildItem -Path "E:\BackupE\QueryFile\delete.sql" -Filter "*.sql" -File
 $results = @()
 foreach ($file in $files) {
     [CustomParser]$parser = [CustomParser]::new([SqlVersion]::Sql130, [SqlEngineType]::All)
@@ -16,4 +16,4 @@ foreach ($file in $files) {
     $results += $parser.AnalysisCodeSummary
 }
 
-$results | Where-Object { ($_.validationResults | Where-Object { -not $_.Validated }).Count -gt 0 } | ConvertTo-Json -Depth 5  > AnalysisLog.json
+$results |ConvertTo-Json -Depth 5
