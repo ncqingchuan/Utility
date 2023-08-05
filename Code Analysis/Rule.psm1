@@ -5,29 +5,98 @@ using namespace System.IO
 using namespace Management.Automation
 using namespace System.Reflection
 
+class CustomParser {
 
-# class ValidationResult {
-#     [AnalysisCodeResult[]]$AnalysisCodeResults = @()
-#     [string] $RuleName
-#     [string] $Descrtiption
-#     [bool] $Validated
-#     [ResponseCode]$ResponseCode = [ResponseCode]::Success
-#     [string] $ResponseMessage = "Success"
-# }
+    hidden [TSqlParser] $TSqlParser
+    hidden [TSqlFragment]$Tree
+    $AnalysisCodeSummary = [PSCustomObject]([ordered]@{
+            ResponseCode      = [ResponseCode]::Success;
+            ResponseMessage   = "Success";
+            ParseErrors       = @();
+            IsDocument        = $true;
+            FileName          = $null;
+            Code              = $null;
+            DocumentName      = $null;
+            ValidationResults = @()
+        })
 
+    [bool] $IsDocument
+    [string] $FileName
+    [string] $Code
+    
+    CustomParser([SqlVersion]$version, [SqlEngineType]$engineType) {
+        switch ($version) {
+            [SqlVersion]::Sql120 { $this.TSqlParser = [TSql120Parser]::new($true) }
+            [SqlVersion]::Sql130 { $this.TSqlParser = [TSql130Parser]::new($true, $engineType) }
+            [SqlVersion]::Sql140 { $this.TSqlParser = [TSql140Parser]::new($true, $engineType) }
+            [SqlVersion]::Sql150 { $this.TSqlParser = [TSql150Parser]::new($true, $engineType) }
+            Default { $this.TSqlParser = [TSql160Parser]::new($true, $engineType) }
+        }
 
+        $this | Add-Member -MemberType ScriptProperty -Name "Batches" -Value {
+            [string[]] $results = @()
+            if ($null -ne $this.Tree) {
+                foreach ($batch in $this.Tree.Batches) {
+                    $results += ($batch.ScriptTokenStream[$batch.FirstTokenIndex..$batch.LastTokenIndex].Text -join [string]::Empty)
+                }
+            }
+            return $results
+        } -SecondValue {
+            throw "The Batches property is readonly."
+        }
 
+        $this | Add-Member -MemberType ScriptProperty -Name "DocumentName" -Value {
+            return if ([string]::IsNullOrWhiteSpace($this.FileName)) { $null } else { [Path]::GetFileName($this.FileName) }
+        } -SecondValue {
+            throw "The DocumentName property is readonly."
+        }
+    }
+
+    [void] Parse() {
+
+        $this.AnalysisCodeSummary.FileName = $this.FileName
+        $this.AnalysisCodeSummary.IsDocument = $this.IsDocument
+        $this.AnalysisCodeSummary.Code = $this.Code
+        $this.AnalysisCodeSummary.DocumentName = $this.DocumentName
+
+        [TextReader]$reader = $null
+        [List[ParseError]]$errors = @()
+        try {
+            $reader = if ($this.IsDocument) { [StreamReader]::new($this.FileName) }else { [StringReader]::new($this.Code) }
+            $this.Tree = $this.TSqlParser.Parse($reader, [ref] $errors)
+        }
+        catch {
+            $this.AnalysisCodeSummary.ResponseCode = [ResponseCode]::Exception
+            $this.AnalysisCodeSummary.ResponseMessage = $_.Exception.Message            
+            return
+        }
+        finally {
+            if ($null -ne $reader) { $reader.Close() }
+        }
+
+        if ($errors.Count -ne 0) {
+            $this.AnalysisCodeSummary.ResponseCode = [ResponseCode]::ParseError
+            $this.AnalysisCodeSummary.ResponseMessage = "An error occured in parsing code."
+            $this.AnalysisCodeSummary.ParseErrors = $errors
+        }
+    }
+
+    [void]Accept([BaseRule]$rule) {
+        if ($null -ne $this.Tree) {
+            $this.Tree.Accept($rule)
+        }
+    }
+    static  [BaseRule[]] GetAllRules() {
+        return [Assembly]::GetAssembly([BaseRule]).GetTypes() | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } | ForEach-Object { New-Object $_ }
+    }
+}
 class BaseRule:TSqlFragmentVisitor {
 
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
     hidden $AnalysisCodeResults = @()
     hidden [string] $Additional
-
     hidden[Object]$lockObj = [Object]::new()
-
-
-
 
     BaseRule() {
         $this | Add-Member -Name "RuleName" -MemberType ScriptProperty -Value {
@@ -46,7 +115,6 @@ class BaseRule:TSqlFragmentVisitor {
             Additional  = $addtional
             StartColumn = $node.StartColumn
         }
-
         $this.AnalysisCodeResults += $AnalysisCodeResult
     }
 
@@ -60,16 +128,12 @@ class BaseRule:TSqlFragmentVisitor {
             ResponseCode        = [ResponseCode]::Success;
             ResponseMessage     = "Success"
         }
-
         $lockTaken = $false
-
         try {
             [Threading.Monitor]::Enter($this.lockObj, [ref] $lockTaken)
             $this.AnalysisCodeResults.Clear()
             $parser.Accept($this)
-            $validationResult.AnalysisCodeResults += $this.AnalysisCodeResults
-
-            
+            $validationResult.AnalysisCodeResults += $this.AnalysisCodeResults           
         }
         catch {
             $validationResult.ResponseCode = [ResponseCode]::Exception
@@ -190,7 +254,6 @@ class PDE003:BaseRule {
         if (-not ($node.StartLine -ge $this.start -and $node.ScriptTokenStream[$node.LastTokenIndex].Line -le $this.end)) {            
             $this.Validate($node, $false, $null)
         }
-        $this.start = $this.end = 0
     }
 }
 
@@ -261,92 +324,4 @@ enum ResponseCode {
     Success = 0
     Exception = 10001
     ParseError = 10002
-}
-class CustomParser {
-
-    hidden [TSqlParser] $TSqlParser
-    hidden [TSqlFragment]$Tree
-    $AnalysisCodeSummary = [PSCustomObject]([ordered]@{
-            ResponseCode      = [ResponseCode]::Success;
-            ResponseMessage   = "Success";
-            ParseErrors       = @();
-            IsDocument        = $true;
-            FileName          = $null;
-            Code              = $null;
-            DocumentName      = $null;
-            ValidationResults = @()
-        })
-
-
-    [bool] $IsDocument
-    [string] $FileName
-    [string] $Code
-    
-    CustomParser([SqlVersion]$version, [SqlEngineType]$engineType) {
-        switch ($version) {
-            [SqlVersion]::Sql120 { $this.TSqlParser = [TSql120Parser]::new($true) }
-            [SqlVersion]::Sql130 { $this.TSqlParser = [TSql130Parser]::new($true, $engineType) }
-            [SqlVersion]::Sql140 { $this.TSqlParser = [TSql140Parser]::new($true, $engineType) }
-            [SqlVersion]::Sql150 { $this.TSqlParser = [TSql150Parser]::new($true, $engineType) }
-            Default { $this.TSqlParser = [TSql160Parser]::new($true, $engineType) }
-        }
-
-        $this | Add-Member -MemberType ScriptProperty -Name "Batches" -Value {
-            [string[]] $results = @()
-            if ($null -ne $this.Tree) {
-                foreach ($batch in $this.Tree.Batches) {
-                    $results += ($batch.ScriptTokenStream[$batch.FirstTokenIndex..$batch.LastTokenIndex].Text -join [string]::Empty)
-                }
-            }
-            return $results
-        } -SecondValue {
-            throw "The Batches property is readonly."
-        }
-
-        $this | Add-Member -MemberType ScriptProperty -Name "DocumentName" -Value {
-            return if ([string]::IsNullOrWhiteSpace($this.FileName)) { $null } else { [Path]::GetFileName($this.FileName) }
-        } -SecondValue {
-            throw "The DocumentName property is readonly."
-        }
-    }
-
-    [void] Parse() {
-
-        $this.AnalysisCodeSummary.FileName = $this.FileName
-        $this.AnalysisCodeSummary.IsDocument = $this.IsDocument
-        $this.AnalysisCodeSummary.Code = $this.Code
-        $this.AnalysisCodeSummary.DocumentName = $this.DocumentName
-
-        [TextReader]$reader = $null
-        [List[ParseError]]$errors = @()
-        try {
-            $reader = if ($this.IsDocument) { [StreamReader]::new($this.FileName) }else { [StringReader]::new($this.Code) }
-            $this.Tree = $this.TSqlParser.Parse($reader, [ref] $errors)
-        }
-        catch {
-            $this.AnalysisCodeSummary.ResponseCode = [ResponseCode]::Exception
-            $this.AnalysisCodeSummary.ResponseMessage = $_.Exception.Message            
-            return
-        }
-        finally {
-            if ($null -ne $reader) { $reader.Close() }
-        }
-
-        if ($errors.Count -ne 0) {
-            $this.AnalysisCodeSummary.ResponseCode = [ResponseCode]::ParseError
-            $this.AnalysisCodeSummary.ResponseMessage = "An error occured in parsing code."
-            $this.AnalysisCodeSummary.ParseErrors = $errors
-        }
-
-    }
-
-    [void]Accept([BaseRule]$rule) {
-        if ($null -ne $this.Tree) {
-            $this.Tree.Accept($rule)
-        }
-    }
-
-    static  [BaseRule[]] GetAllRules() {
-        return [Assembly]::GetAssembly([BaseRule]).GetTypes() | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } | ForEach-Object { New-Object $_ }
-    }
 }
