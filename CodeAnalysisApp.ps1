@@ -3,23 +3,17 @@ using namespace Microsoft.SqlServer.TransactSql.ScriptDom
 
 $files = Get-ChildItem -Path "E:\BackupE\QueryFile" -Filter "*.sql" -File
 $results = @()
-$parserrors = @()
 foreach ($file in $files) {
     [CustomParser]$parser = [CustomParser]::new([SqlVersion]::Sql130, [SqlEngineType]::All)
-    $parseError = $parser.Parse($file.FullName)
-    if ($parseError.Count -gt 0) {
-        $parserrors += [PSCustomObject]@{  File = $file.FullName; ParseErrors = $parseError }
-    }
-    else {
-        $ValidationResults = @()
-        foreach ($rule in [CustomParser]::GetAllRules()) {
+    $parser.FileName = $file.FullName
+    $parser.IsDocument = $true  
+    $parser.Parse()
+    foreach ($rule in [CustomParser]::GetAllRules()) {
+        if ($parser.AnalysisCodeSummary.ResponseCode -eq [ResponseCode]::Success) {
             $rule.Validate($parser)
-            if (-not $parser.ValidationResult.Validated) {
-                $ValidationResults += $parser.ValidationResult
-            }
-        }
-        $results += [PSCustomObject]@{  File = $file.FullName; ValidationResults = $ValidationResults }
+        } 
     }
+    $results += $parser.AnalysisCodeSummary
 }
 
-$results | Where-Object { $_.ValidationResults.Count -gt 0 } 
+$results | Where-Object { ($_.validationResults | Where-Object { -not $_.Validated }).Count -gt 0 } | ConvertTo-Json -Depth 5  > AnalysisLog.json

@@ -6,37 +6,28 @@ using namespace Management.Automation
 using namespace System.Reflection
 
 
-class ValidationResult {
-    [AnalysisCodeResult[]]$AnalysisCodeResults = @()
-    [string] $RuleName
-    [string] $Descrtiption
+# class ValidationResult {
+#     [AnalysisCodeResult[]]$AnalysisCodeResults = @()
+#     [string] $RuleName
+#     [string] $Descrtiption
+#     [bool] $Validated
+#     [ResponseCode]$ResponseCode = [ResponseCode]::Success
+#     [string] $ResponseMessage = "Success"
+# }
 
-    ValidationResult() {
-        $this | Add-Member -Name "Validated" -MemberType ScriptProperty -Value {
-            ($this.AnalysisCodeResults.Count -eq 0) -or ($this.AnalysisCodeResults | Where-Object {
-                    -not $_.$Validated
-                }).Count -eq 0
-        } -SecondValue {
-            throw "The Validated property is readonly."
-        }
-    }   
-}
 
-class AnalysisCodeResult {
-    [int]$StartLine
-    [int] $EndLine
-    [bool]$Validated
-    [string]$Text
-    [string]$Additional
-    [int] $StartColumn
-}
 
 class BaseRule:TSqlFragmentVisitor {
 
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
-    hidden [AnalysisCodeResult[]] $AnalysisCodeResults
+    hidden $AnalysisCodeResults = @()
     hidden [string] $Additional
+
+    hidden[Object]$lockObj = [Object]::new()
+
+
+
 
     BaseRule() {
         $this | Add-Member -Name "RuleName" -MemberType ScriptProperty -Value {
@@ -46,23 +37,53 @@ class BaseRule:TSqlFragmentVisitor {
         }
     }
 
-    hidden [void] Validate([TSqlFragment] $node, [bool] $Validated) {
-        $AnalysisCodeResult = [AnalysisCodeResult]::new()
-        $AnalysisCodeResult.StartLine = $node.StartLine
-        $AnalysisCodeResult.EndLine = $node.ScriptTokenStream[$node.LastTokenIndex].Line
-        $AnalysisCodeResult.Text = $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty
-        $AnalysisCodeResult.StartColumn = $node.StartColumn
-        $AnalysisCodeResult.Additional = $this.Additional
+    hidden [void] Validate([TSqlFragment] $node, [bool] $validated , [string] $addtional) {
+        $AnalysisCodeResult = [PSCustomObject]@{
+            StartLine   = $node.StartLine
+            EndLine     = $node.ScriptTokenStream[$node.LastTokenIndex].Line
+            Validated   = $validated
+            Text        = $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty
+            Additional  = $addtional
+            StartColumn = $node.StartColumn
+        }
+
         $this.AnalysisCodeResults += $AnalysisCodeResult
     }
 
     [void]Validate([CustomParser]$parser) {
-        $this.AnalysisCodeResults = @()
-        $parser.ValidationResult = [ValidationResult]::new()
-        $parser.ValidationResult.RuleName = $this.RuleName
-        $parser.ValidationResult.Descrtiption = $this.Descrtiption        
-        $parser.Accept($this)
-        $parser.ValidationResult.AnalysisCodeResults = $this.AnalysisCodeResults
+
+        [psobject]$validationResult = [PSCustomObject]@{
+            AnalysisCodeResults = @();
+            RuleName            = $this.RuleName;
+            Descrtiption        = $this.Descrtiption;
+            Validated           = $true;
+            ResponseCode        = [ResponseCode]::Success;
+            ResponseMessage     = "Success"
+        }
+
+        $lockTaken = $false
+
+        try {
+            [Threading.Monitor]::Enter($this.lockObj, [ref] $lockTaken)
+            $this.AnalysisCodeResults.Clear()
+            $parser.Accept($this)
+            $validationResult.AnalysisCodeResults += $this.AnalysisCodeResults
+
+            
+        }
+        catch {
+            $validationResult.ResponseCode = [ResponseCode]::Exception
+            $validationResult.ResponseMessage = $_.Exception.Message
+            return
+        }
+        finally {
+            if ($lockTaken) { [Threading.Monitor]::Exit($this.lockObj) }
+        }
+       
+        $validationResult.Validated = ($validationResult.AnalysisCodeResults.Count -eq 0) -or ( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0
+        if (-not $validationResult.Validated) {
+            $parser.AnalysisCodeSummary.ValidationResults += $validationResult
+        } 
     }
 }
 
@@ -104,7 +125,7 @@ class PDE002 :BaseRule {
                 if ($tableReference -is [QualifiedJoin]) { return }
             }
         }
-        $this.Validate($node, $false)
+        $this.Validate($node, $false, $null)
     }
 }
 
@@ -167,7 +188,7 @@ class PDE003:BaseRule {
 
     hidden [void] CheckWhile([TSqlFragment] $node) {
         if (-not ($node.StartLine -ge $this.start -and $node.ScriptTokenStream[$node.LastTokenIndex].Line -le $this.end)) {            
-            $this.Validate($node, $false)
+            $this.Validate($node, $false, $null)
         }
         $this.start = $this.end = 0
     }
@@ -181,12 +202,12 @@ class PDE004:BaseRule {
 
     [void]Visit([DropTableStatement]$node) {       
         if ( ($node.Objects | Where-Object { $_.BaseIdentifier.Value -inotmatch "^#{1,2}" }).Count -gt 0) {
-            $this.Validate($node, $false)
+            $this.Validate($node, $false, $null)
         }       
     }
 
     [void] Visit([DropDatabaseStatement]$node) {
-        $this.Validate($node, $false)
+        $this.Validate($node, $false, $null)
     }
 }
 class PDE005:BaseRule {
@@ -197,7 +218,7 @@ class PDE005:BaseRule {
 
     [void]Visit([SelectStatement]$node) {
         if ($null -ne $node.Into) {
-            $this.Validate($node, $false)
+            $this.Validate($node, $false, $null)
         }
     }
 }
@@ -236,16 +257,30 @@ enum Severity {
     Fault = 4
 }
 
-enum AnalysisType {
-    File = 1
-    Code = 2
+enum ResponseCode {
+    Success = 0
+    Exception = 10001
+    ParseError = 10002
 }
 class CustomParser {
 
     hidden [TSqlParser] $TSqlParser
     hidden [TSqlFragment]$Tree
-    hidden [AnalysisType] $AnalysisType
-    [ValidationResult] $ValidationResult
+    $AnalysisCodeSummary = [PSCustomObject]([ordered]@{
+            ResponseCode      = [ResponseCode]::Success;
+            ResponseMessage   = "Success";
+            ParseErrors       = @();
+            IsDocument        = $true;
+            FileName          = $null;
+            Code              = $null;
+            DocumentName      = $null;
+            ValidationResults = @()
+        })
+
+
+    [bool] $IsDocument
+    [string] $FileName
+    [string] $Code
     
     CustomParser([SqlVersion]$version, [SqlEngineType]$engineType) {
         switch ($version) {
@@ -267,31 +302,40 @@ class CustomParser {
         } -SecondValue {
             throw "The Batches property is readonly."
         }
+
+        $this | Add-Member -MemberType ScriptProperty -Name "DocumentName" -Value {
+            return if ([string]::IsNullOrWhiteSpace($this.FileName)) { $null } else { [Path]::GetFileName($this.FileName) }
+        } -SecondValue {
+            throw "The DocumentName property is readonly."
+        }
     }
 
-    hidden [TextReader] GetReader([string] $codeOrFile) {
-        [TextReader]$reader = if ([File]::Exists($codeOrFile)) {
-            [StreamReader]::new($codeOrFile)
-        }
-        else {
-            [StringReader]::new($codeOrFile)
-        }
-        return $reader
-    }
+    [void] Parse() {
 
-    [ParseError[]] Parse([string] $codeOrFile) {
+        $this.AnalysisCodeSummary.FileName = $this.FileName
+        $this.AnalysisCodeSummary.IsDocument = $this.IsDocument
+        $this.AnalysisCodeSummary.Code = $this.Code
+        $this.AnalysisCodeSummary.DocumentName = $this.DocumentName
+
         [TextReader]$reader = $null
         [List[ParseError]]$errors = @()
         try {
-            $reader = $this.GetReader($codeOrFile)
+            $reader = if ($this.IsDocument) { [StreamReader]::new($this.FileName) }else { [StringReader]::new($this.Code) }
             $this.Tree = $this.TSqlParser.Parse($reader, [ref] $errors)
-            return $errors
         }
         catch {
-            throw $_
+            $this.AnalysisCodeSummary.ResponseCode = [ResponseCode]::Exception
+            $this.AnalysisCodeSummary.ResponseMessage = $_.Exception.Message            
+            return
         }
         finally {
             if ($null -ne $reader) { $reader.Close() }
+        }
+
+        if ($errors.Count -ne 0) {
+            $this.AnalysisCodeSummary.ResponseCode = [ResponseCode]::ParseError
+            $this.AnalysisCodeSummary.ResponseMessage = "An error occured in parsing code."
+            $this.AnalysisCodeSummary.ParseErrors = $errors
         }
 
     }
