@@ -16,3 +16,4 @@ foreach ($file in $files) {
 
 $report = $results | Where-Object { $_.ResponseCode -eq [ResponseCode]::ParseError -or ($_.validationResults | Where-Object { -not $_.Validated }).Count -gt 0 }
 $report | Select-Object  -Property  FileName, DocumentName -ExpandProperty ValidationResults 
+

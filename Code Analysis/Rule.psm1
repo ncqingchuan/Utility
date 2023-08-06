@@ -111,12 +111,14 @@ class CustomParser {
         }
         finally {
             if ($lockTaken) { [Threading.Monitor]::Exit($this.lockObj) }
+            $validationResult.Validated = $validationResult.ResponseCode -eq [ResponseCode]::Success `
+                -and (($validationResult.AnalysisCodeResults.Count -eq 0) `
+                    -or ( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0)
+                    
+            if (-not $validationResult.Validated) {
+                $this.AnalysisCodeSummary.ValidationResults += $validationResult
+            }        
         }
-       
-        $validationResult.Validated = ($validationResult.AnalysisCodeResults.Count -eq 0) -or ( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0
-        if (-not $validationResult.Validated) {
-            $this.AnalysisCodeSummary.ValidationResults += $validationResult
-        } 
     }
     
     static  [BaseRule[]] GetAllRules() {
