@@ -10,7 +10,7 @@ foreach ($file in $files) {
     $parser.Parse()
     foreach ($rule in [CustomParser]::GetAllRules()) {
         if ($parser.AnalysisCodeSummary.ResponseCode -eq [ResponseCode]::Success) {
-            $rule.Validate($parser)
+            $parser.Validate($rule)
         } 
     }
     $results += $parser.AnalysisCodeSummary

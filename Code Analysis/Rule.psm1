@@ -23,6 +23,7 @@ class CustomParser {
     [bool] $IsDocument
     [string] $FileName
     [string] $Code
+    hidden[Object]$lockObj = [Object]::new()
     
     CustomParser([SqlVersion]$version, [SqlEngineType]$engineType) {
         switch ($version) {
@@ -47,7 +48,6 @@ class CustomParser {
     }
 
     [void] Parse() {
-
         $this.AnalysisCodeSummary.FileName = $this.FileName
         $this.AnalysisCodeSummary.IsDocument = $this.IsDocument 
         $this.AnalysisCodeSummary.DocumentName = [Path]::GetFileName($this.FileName)
@@ -84,6 +84,41 @@ class CustomParser {
             $this.Tree.Accept($rule)
         }
     }
+
+    [void]Validate([BaseRule] $rule) {
+        if ( $null -eq $this.Tree ) { return }
+        [psobject]$validationResult = [PSCustomObject]([ordered]@{
+                ResponseCode        = [ResponseCode]::Success;
+                ResponseMessage     = "Success";
+                RuleName            = $rule.RuleName;
+                Descrtiption        = $rule.Descrtiption;
+                Severity            = $rule.Severity;
+                Validated           = $true;
+                AnalysisCodeResults = @();
+
+            })
+        $lockTaken = $false
+        try {
+            [Threading.Monitor]::Enter($this.lockObj, [ref] $lockTaken)
+            $rule.AnalysisCodeResults.Clear()
+            $this.Tree.Accept($rule)
+            $validationResult.AnalysisCodeResults += $rule.AnalysisCodeResults           
+        }
+        catch {
+            $validationResult.ResponseCode = [ResponseCode]::Exception
+            $validationResult.ResponseMessage = $_.Exception.Message
+            return
+        }
+        finally {
+            if ($lockTaken) { [Threading.Monitor]::Exit($this.lockObj) }
+        }
+       
+        $validationResult.Validated = ($validationResult.AnalysisCodeResults.Count -eq 0) -or ( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0
+        if (-not $validationResult.Validated) {
+            $this.AnalysisCodeSummary.ValidationResults += $validationResult
+        } 
+    }
+
     static  [BaseRule[]] GetAllRules() {
         return [Assembly]::GetAssembly([BaseRule]).GetTypes() | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } | ForEach-Object { New-Object $_ }
     }
@@ -92,10 +127,10 @@ class BaseRule:TSqlFragmentVisitor {
 
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
-    hidden $AnalysisCodeResults = @()
-    hidden [string] $Additional
-    hidden[Object]$lockObj = [Object]::new()
+    $AnalysisCodeResults = @()
 
+    hidden [string] $Additional
+    
     BaseRule() {
         $this | Add-Member -Name "RuleName" -MemberType ScriptProperty -Value {
             return  $this.GetType().Name
@@ -114,37 +149,6 @@ class BaseRule:TSqlFragmentVisitor {
                 Additional  = $addtional     
             })
         $this.AnalysisCodeResults += $AnalysisCodeResult
-    }
-
-    [void]Validate([CustomParser]$parser) {
-        [psobject]$validationResult = [PSCustomObject]([ordered]@{
-                ResponseCode        = [ResponseCode]::Success;
-                ResponseMessage     = "Success";
-                RuleName            = $this.RuleName;
-                Descrtiption        = $this.Descrtiption;
-                Validated           = $true;
-                AnalysisCodeResults = @()
-            })
-        $lockTaken = $false
-        try {
-            [Threading.Monitor]::Enter($this.lockObj, [ref] $lockTaken)
-            $this.AnalysisCodeResults.Clear()
-            $parser.Accept($this)
-            $validationResult.AnalysisCodeResults += $this.AnalysisCodeResults           
-        }
-        catch {
-            $validationResult.ResponseCode = [ResponseCode]::Exception
-            $validationResult.ResponseMessage = $_.Exception.Message
-            return
-        }
-        finally {
-            if ($lockTaken) { [Threading.Monitor]::Exit($this.lockObj) }
-        }
-       
-        $validationResult.Validated = ($validationResult.AnalysisCodeResults.Count -eq 0) -or ( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0
-        if (-not $validationResult.Validated) {
-            $parser.AnalysisCodeSummary.ValidationResults += $validationResult
-        } 
     }
 }
 
