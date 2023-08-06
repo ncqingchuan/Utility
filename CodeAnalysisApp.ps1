@@ -9,9 +9,7 @@ foreach ($file in $files) {
     $parser.IsDocument = $true  
     $parser.Parse()
     foreach ($rule in [CustomParser]::GetAllRules()) {
-        if ($parser.AnalysisCodeSummary.ResponseCode -eq [ResponseCode]::Success) {
-            $parser.Validate($rule)
-        } 
+        if ($parser.AnalysisCodeSummary.ResponseCode -eq [ResponseCode]::Success) { $parser.Validate($rule) } 
     }
     $results += $parser.AnalysisCodeSummary
 }

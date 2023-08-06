@@ -118,7 +118,7 @@ class CustomParser {
             $this.AnalysisCodeSummary.ValidationResults += $validationResult
         } 
     }
-
+    
     static  [BaseRule[]] GetAllRules() {
         return [Assembly]::GetAssembly([BaseRule]).GetTypes() | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } | ForEach-Object { New-Object $_ }
     }
@@ -130,7 +130,7 @@ class BaseRule:TSqlFragmentVisitor {
     $AnalysisCodeResults = @()
 
     hidden [string] $Additional
-    
+
     BaseRule() {
         $this | Add-Member -Name "RuleName" -MemberType ScriptProperty -Value {
             return  $this.GetType().Name
