@@ -79,14 +79,7 @@ class CustomParser {
         }
     }
 
-    [void]Accept([BaseRule]$rule) {
-        if ($null -ne $this.Tree) {
-            $this.Tree.Accept($rule)
-        }
-    }
-
     [void]Validate([BaseRule] $rule) {
-        if ( $null -eq $this.Tree ) { return }
         [psobject]$validationResult = [PSCustomObject]([ordered]@{
                 ResponseCode        = [ResponseCode]::Success;
                 ResponseMessage     = "Success";
@@ -95,7 +88,6 @@ class CustomParser {
                 Severity            = $rule.Severity;
                 Validated           = $true;
                 AnalysisCodeResults = @();
-
             })
         $lockTaken = $false
         try {
@@ -112,9 +104,8 @@ class CustomParser {
         finally {
             if ($lockTaken) { [Threading.Monitor]::Exit($this.lockObj) }
             $validationResult.Validated = $validationResult.ResponseCode -eq [ResponseCode]::Success `
-                -and (($validationResult.AnalysisCodeResults.Count -eq 0) `
-                    -or ( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0)
-                    
+                -and (( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0)
+                
             if (-not $validationResult.Validated) {
                 $this.AnalysisCodeSummary.ValidationResults += $validationResult
             }        
