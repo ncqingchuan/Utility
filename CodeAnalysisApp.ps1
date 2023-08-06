@@ -1,10 +1,10 @@
 using module '.\Code Analysis\Rule.psm1'
 using namespace Microsoft.SqlServer.TransactSql.ScriptDom
 
-$files = Get-ChildItem -Path "E:\BackupE\QueryFile\delete.sql" -Filter "*.sql" -File
+$files = Get-ChildItem -Path "E:\BackupE\QueryFile" -Filter "*.sql" -File
 $results = @()
 foreach ($file in $files) {
-    [CustomParser]$parser = [CustomParser]::new([SqlVersion]::Sql130, [SqlEngineType]::All)
+    [CustomParser]$parser = [CustomParser]::new([SqlVersion]::Sql130, [SqlEngineType]::Standalone)
     $parser.FileName = $file.FullName
     $parser.IsDocument = $true  
     $parser.Parse()
@@ -16,4 +16,5 @@ foreach ($file in $files) {
     $results += $parser.AnalysisCodeSummary
 }
 
-$results |ConvertTo-Json -Depth 5
+$report = $results | Where-Object { $_.ResponseCode -eq [ResponseCode]::ParseError -or ($_.validationResults | Where-Object { -not $_.Validated }).Count -gt 0 }
+$report | Select-Object  -Property  FileName, DocumentName -ExpandProperty ValidationResults 

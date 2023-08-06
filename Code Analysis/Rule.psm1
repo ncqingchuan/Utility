@@ -74,7 +74,7 @@ class CustomParser {
 
         if ($errors.Count -ne 0) {
             $this.AnalysisCodeSummary.ResponseCode = [ResponseCode]::ParseError
-            $this.AnalysisCodeSummary.ResponseMessage = "An error occured in parsing code."
+            $this.AnalysisCodeSummary.ResponseMessage = "An error occurred while parsing the code."
             $this.AnalysisCodeSummary.ParseErrors = $errors
         }
     }
@@ -105,27 +105,26 @@ class BaseRule:TSqlFragmentVisitor {
     }
 
     hidden [void] Validate([TSqlFragment] $node, [bool] $validated , [string] $addtional) {
-        $AnalysisCodeResult = [PSCustomObject]@{
-            StartLine   = $node.StartLine
-            EndLine     = $node.ScriptTokenStream[$node.LastTokenIndex].Line
-            Validated   = $validated
-            Text        = $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty
-            Additional  = $addtional
-            StartColumn = $node.StartColumn
-        }
+        $AnalysisCodeResult = [PSCustomObject]([ordered]@{
+                StartLine   = $node.StartLine;
+                EndLine     = $node.ScriptTokenStream[$node.LastTokenIndex].Line;
+                StartColumn = $node.StartColumn;
+                Validated   = $validated;
+                Text        = $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty;
+                Additional  = $addtional     
+            })
         $this.AnalysisCodeResults += $AnalysisCodeResult
     }
 
     [void]Validate([CustomParser]$parser) {
-
-        [psobject]$validationResult = [PSCustomObject]@{
-            AnalysisCodeResults = @();
-            RuleName            = $this.RuleName;
-            Descrtiption        = $this.Descrtiption;
-            Validated           = $true;
-            ResponseCode        = [ResponseCode]::Success;
-            ResponseMessage     = "Success"
-        }
+        [psobject]$validationResult = [PSCustomObject]([ordered]@{
+                ResponseCode        = [ResponseCode]::Success;
+                ResponseMessage     = "Success";
+                RuleName            = $this.RuleName;
+                Descrtiption        = $this.Descrtiption;
+                Validated           = $true;
+                AnalysisCodeResults = @()
+            })
         $lockTaken = $false
         try {
             [Threading.Monitor]::Enter($this.lockObj, [ref] $lockTaken)
