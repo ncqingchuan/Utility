@@ -18,7 +18,7 @@ class CustomParser {
             IsDocument        = $true;
             ParseErrors       = [List[ParseError]]::new();
             ValidationResults = [List[psobject]]::new();
-            Batches           = [string[]]@()
+            # Batches           = [string[]]@()
         })
 
     hidden [bool] $IsDocument
@@ -65,11 +65,11 @@ class CustomParser {
             $this.AnalysisCodeSummary.ParseErrors = $errors
         }
 
-        if ($null -ne $this.Tree) {
-            foreach ($batch in $this.Tree.Batches) {
-                $this.AnalysisCodeSummary.Batches += ($batch.ScriptTokenStream[$batch.FirstTokenIndex..$batch.LastTokenIndex].Text -join [string]::Empty)
-            }
-        }
+        # if ($null -ne $this.Tree) {
+        #     foreach ($batch in $this.Tree.Batches) {
+        #         $this.AnalysisCodeSummary.Batches += ($batch.ScriptTokenStream[$batch.FirstTokenIndex..$batch.LastTokenIndex].Text -join [string]::Empty)
+        #     }
+        # }
     }
 
     hidden [void]Validate([BaseRule] $rule, [bool]$locked) {
@@ -80,12 +80,12 @@ class CustomParser {
                 Descrtiption        = $rule.Descrtiption;
                 Severity            = $rule.Severity;
                 Validated           = $true;
-                AnalysisCodeResults = [List[psobject]]::new();
+                AnalysisCodeResults = @();
             })
         $lockTaken = $false
         try {
             if ($locked) { [Threading.Monitor]::Enter($rule.AnalysisCodeResults, [ref] $lockTaken) }
-            $rule.AnalysisCodeResults.Clear()
+            $rule.AnalysisCodeResults = @()
             $this.Tree.Accept($rule)
             $validationResult.AnalysisCodeResults += $rule.AnalysisCodeResults
         }
@@ -130,17 +130,9 @@ class BaseRule:TSqlFragmentVisitor {
 
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
-    [List[psobject]]$AnalysisCodeResults = [List[psobject]]::new()
-
+    $AnalysisCodeResults = @()
+    [string]$RuleName = $this.GetType().Name
     hidden [string] $Additional
-
-    BaseRule() {
-        $this | Add-Member -Name "RuleName" -MemberType ScriptProperty -Value {
-            return  $this.GetType().Name
-        } -SecondValue {
-            throw "The RuleName property is readonly."
-        }
-    }
 
     hidden [void] Validate([TSqlFragment] $node, [bool] $validated , [string] $addtional) {
         $AnalysisCodeResult = [PSCustomObject]([ordered]@{
