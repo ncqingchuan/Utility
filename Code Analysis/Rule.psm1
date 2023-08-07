@@ -84,8 +84,8 @@ class CustomParser {
             })
         $lockTaken = $false
         try {
-            if ($locked) { [Threading.Monitor]::Enter($rule, [ref] $lockTaken) }
-            $rule.AnalysisCodeResults = @()
+            if ($locked) { [Threading.Monitor]::Enter($rule.AnalysisCodeResults, [ref] $lockTaken) }
+            $rule.AnalysisCodeResults.Clear()
             $this.Tree.Accept($rule)
             $validationResult.AnalysisCodeResults += $rule.AnalysisCodeResults
         }
@@ -95,7 +95,7 @@ class CustomParser {
             return
         }
         finally {
-            if ($lockTaken) { [Threading.Monitor]::Exit($rule) }
+            if ($lockTaken) { [Threading.Monitor]::Exit($rule.AnalysisCodeResults) }
             $validationResult.Validated = $validationResult.ResponseCode -eq [ResponseCode]::Success `
                 -and (( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0)
                 
@@ -107,8 +107,7 @@ class CustomParser {
 
     static [psobject] Analysis([string]$codeOrFile, [bool]$isDocumnet, [BaseRule[]]$rules) {
         [CustomParser]$parser = [CustomParser]::new([SqlVersion]::Sql130, [SqlEngineType]::All)
-        $parser.Code = if (-not $isDocumnet) { $codeOrFile }else { $null }
-        $parser.FileName = if ($isDocumnet) { $codeOrFile }else { $null }
+        if (-not $isDocumnet) { $parser.Code = $codeOrFile }else { $parser.FileName = $codeOrFile }
         $parser.IsDocument = $isDocumnet
         $parser.Parse()
         if ($parser.AnalysisCodeSummary.ResponseCode -eq [ResponseCode]::Success) {
@@ -131,7 +130,7 @@ class BaseRule:TSqlFragmentVisitor {
 
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
-    $AnalysisCodeResults = @()
+    [List[psobject]]$AnalysisCodeResults = [List[psobject]]::new()
 
     hidden [string] $Additional
 
