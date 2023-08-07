@@ -111,10 +111,6 @@ class CustomParser {
             }        
         }
     }
-    
-    static  [BaseRule[]] GetAllRules() {
-        return [Assembly]::GetAssembly([BaseRule]).GetTypes() | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } | ForEach-Object { New-Object $_ }
-    }
 }
 class BaseRule:TSqlFragmentVisitor {
 
@@ -142,6 +138,10 @@ class BaseRule:TSqlFragmentVisitor {
                 Additional  = $addtional     
             })
         $this.AnalysisCodeResults += $AnalysisCodeResult
+    }
+
+    static  [BaseRule[]] GetAllRules() {
+        return [Assembly]::GetAssembly([BaseRule]).GetTypes() | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } | ForEach-Object { New-Object $_ }
     }
 }
 
