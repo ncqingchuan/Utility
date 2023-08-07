@@ -91,10 +91,10 @@ class CustomParser {
             })
         $lockTaken = $false
         try {
-            [Threading.Monitor]::Enter($this.lockObj, [ref] $lockTaken)
+            [Threading.Monitor]::Enter($rule, [ref] $lockTaken)
             $rule.AnalysisCodeResults.Clear()
             $this.Tree.Accept($rule)
-            $validationResult.AnalysisCodeResults += $rule.AnalysisCodeResults           
+            $validationResult.AnalysisCodeResults.AddRange($rule.AnalysisCodeResults)
         }
         catch {
             $validationResult.ResponseCode = [ResponseCode]::Exception
@@ -102,7 +102,7 @@ class CustomParser {
             return
         }
         finally {
-            if ($lockTaken) { [Threading.Monitor]::Exit($this.lockObj) }
+            if ($lockTaken) { [Threading.Monitor]::Exit($rule) }
             $validationResult.Validated = $validationResult.ResponseCode -eq [ResponseCode]::Success `
                 -and (( $validationResult.AnalysisCodeResults | Where-Object { -not $_.Validated } ).Count -eq 0)
                 
@@ -120,7 +120,7 @@ class BaseRule:TSqlFragmentVisitor {
 
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
-    $AnalysisCodeResults = @()
+    [List[psobject]]$AnalysisCodeResults = @()
 
     hidden [string] $Additional
 
