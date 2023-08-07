@@ -1,5 +1,4 @@
 using module '.\Code Analysis\Rule.psm1'
-using namespace Microsoft.SqlServer.TransactSql.ScriptDom
 
 $files = Get-ChildItem -Path "E:\BackupE\QueryFile" -Filter "*.sql" -File
 $rules = [BaseRule]::GetAllRules()
