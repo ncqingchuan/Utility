@@ -52,14 +52,14 @@ class CustomParser {
         $this.AnalysisCodeSummary.IsDocument = $this.IsDocument 
         $this.AnalysisCodeSummary.DocumentName = [Path]::GetFileName($this.FileName)
 
-        [TextReader]$reader = $null
-        [ParseError[]]$errors = @()
-        if ($this.IsDocument) {
-            $this.Code = Get-Content -Path $this.FileName -Encoding utf8 | Out-String
-        }
-        $this.AnalysisCodeSummary.Code = $this.Code
+        [StringReader]$reader = $null
+        [ParseError[]]$errors = @()      
 
         try {
+            if ($this.IsDocument) {
+                $this.Code = [File]::ReadAllText($this.FileName)
+            }
+            $this.AnalysisCodeSummary.Code = $this.Code
             $reader = [StringReader]::new($this.Code) 
             $this.Tree = $this.TSqlParser.Parse($reader, [ref] $errors)
         }
@@ -94,7 +94,7 @@ class CustomParser {
             [Threading.Monitor]::Enter($rule, [ref] $lockTaken)
             $rule.AnalysisCodeResults.Clear()
             $this.Tree.Accept($rule)
-            $validationResult.AnalysisCodeResults.AddRange($rule.AnalysisCodeResults)
+            $validationResult.AnalysisCodeResults += $rule.AnalysisCodeResults
         }
         catch {
             $validationResult.ResponseCode = [ResponseCode]::Exception
@@ -120,7 +120,7 @@ class BaseRule:TSqlFragmentVisitor {
 
     [string]$Descrtiption
     [Severity]$Severity = [Severity]::Information
-    [List[psobject]]$AnalysisCodeResults = @()
+    $AnalysisCodeResults = @()
 
     hidden [string] $Additional
 
