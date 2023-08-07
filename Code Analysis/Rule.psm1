@@ -9,23 +9,24 @@ class CustomParser {
 
     hidden [TSqlParser] $TSqlParser
     hidden [TSqlFragment]$Tree
-    $AnalysisCodeSummary = [PSCustomObject]([ordered]@{
+    hidden $AnalysisCodeSummary = [PSCustomObject]([ordered]@{
             ResponseCode      = [ResponseCode]::Success;
             ResponseMessage   = "Success";
             FileName          = $null;
             DocumentName      = $null;
             Code              = $null;
             IsDocument        = $true;
-            ParseErrors       = @();
-            ValidationResults = @()
+            ParseErrors       = [List[ParseError]]::new();
+            ValidationResults = [List[psobject]]::new();
+            Batches           = [string[]]@()
         })
 
-    [bool] $IsDocument
-    [string] $FileName
-    [string] $Code
-    hidden[Object]$lockObj = [Object]::new()
-    
-    CustomParser([SqlVersion]$version, [SqlEngineType]$engineType) {
+    hidden [bool] $IsDocument
+    hidden [string] $FileName
+    hidden [string] $Code
+
+
+    hidden CustomParser([SqlVersion]$version, [SqlEngineType]$engineType) {
         switch ($version) {
             [SqlVersion]::Sql120 { $this.TSqlParser = [TSql120Parser]::new($true) }
             [SqlVersion]::Sql130 { $this.TSqlParser = [TSql130Parser]::new($true, $engineType) }
@@ -33,21 +34,9 @@ class CustomParser {
             [SqlVersion]::Sql150 { $this.TSqlParser = [TSql150Parser]::new($true, $engineType) }
             Default { $this.TSqlParser = [TSql160Parser]::new($true, $engineType) }
         }
-
-        $this | Add-Member -MemberType ScriptProperty -Name "Batches" -Value {
-            [string[]] $results = @()
-            if ($null -ne $this.Tree) {
-                foreach ($batch in $this.Tree.Batches) {
-                    $results += ($batch.ScriptTokenStream[$batch.FirstTokenIndex..$batch.LastTokenIndex].Text -join [string]::Empty)
-                }
-            }
-            return $results
-        } -SecondValue {
-            throw "The Batches property is readonly."
-        }
     }
 
-    [void] Parse() {
+    hidden [void] Parse() {
         $this.AnalysisCodeSummary.FileName = $this.FileName
         $this.AnalysisCodeSummary.IsDocument = $this.IsDocument 
         $this.AnalysisCodeSummary.DocumentName = [Path]::GetFileName($this.FileName)
@@ -56,9 +45,7 @@ class CustomParser {
         [ParseError[]]$errors = @()      
 
         try {
-            if ($this.IsDocument) {
-                $this.Code = [File]::ReadAllText($this.FileName)
-            }
+            if ($this.IsDocument) { $this.Code = [File]::ReadAllText($this.FileName) }
             $this.AnalysisCodeSummary.Code = $this.Code
             $reader = [StringReader]::new($this.Code) 
             $this.Tree = $this.TSqlParser.Parse($reader, [ref] $errors)
@@ -77,9 +64,15 @@ class CustomParser {
             $this.AnalysisCodeSummary.ResponseMessage = "An error occurred while parsing the code."
             $this.AnalysisCodeSummary.ParseErrors = $errors
         }
+
+        if ($null -ne $this.Tree) {
+            foreach ($batch in $this.Tree.Batches) {
+                $this.AnalysisCodeSummary.Batches += ($batch.ScriptTokenStream[$batch.FirstTokenIndex..$batch.LastTokenIndex].Text -join [string]::Empty)
+            }
+        }
     }
 
-    [void]Validate([BaseRule] $rule) {
+    hidden [void]Validate([BaseRule] $rule, [bool]$locked) {
         [psobject]$validationResult = [PSCustomObject]([ordered]@{
                 ResponseCode        = [ResponseCode]::Success;
                 ResponseMessage     = "Success";
@@ -87,12 +80,12 @@ class CustomParser {
                 Descrtiption        = $rule.Descrtiption;
                 Severity            = $rule.Severity;
                 Validated           = $true;
-                AnalysisCodeResults = @();
+                AnalysisCodeResults = [List[psobject]]::new();
             })
         $lockTaken = $false
         try {
-            [Threading.Monitor]::Enter($rule, [ref] $lockTaken)
-            $rule.AnalysisCodeResults.Clear()
+            if ($locked) { [Threading.Monitor]::Enter($rule, [ref] $lockTaken) }
+            $rule.AnalysisCodeResults = @()
             $this.Tree.Accept($rule)
             $validationResult.AnalysisCodeResults += $rule.AnalysisCodeResults
         }
@@ -110,6 +103,28 @@ class CustomParser {
                 $this.AnalysisCodeSummary.ValidationResults += $validationResult
             }        
         }
+    }
+
+    static [psobject] Analysis([string]$codeOrFile, [bool]$isDocumnet, [BaseRule[]]$rules) {
+        [CustomParser]$parser = [CustomParser]::new([SqlVersion]::Sql130, [SqlEngineType]::All)
+        $parser.Code = if (-not $isDocumnet) { $codeOrFile }else { $null }
+        $parser.FileName = if ($isDocumnet) { $codeOrFile }else { $null }
+        $parser.IsDocument = $isDocumnet
+        $parser.Parse()
+        if ($parser.AnalysisCodeSummary.ResponseCode -eq [ResponseCode]::Success) {
+            foreach ($rule in $rules) {
+                $parser.Validate($rule, $false)
+            }
+        }
+        return $parser.AnalysisCodeSummary
+    }
+
+    static [psobject[]] Analysis([string[]]$files, [BaseRule[]]$rules) {
+        $result = @()
+        foreach ($file in $files) {
+            $result += [CustomParser]::Analysis($file, $true, $rules)
+        }
+        return $result
     }
 }
 class BaseRule:TSqlFragmentVisitor {
