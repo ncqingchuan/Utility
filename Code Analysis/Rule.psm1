@@ -135,19 +135,26 @@ class BaseRule:TSqlFragmentVisitor {
     hidden [string] $Additional
 
     hidden [void] Validate([TSqlFragment] $node, [bool] $validated , [string] $addtional) {
-        $AnalysisCodeResult = [PSCustomObject]([ordered]@{
-                StartLine   = $node.StartLine;
-                EndLine     = $node.ScriptTokenStream[$node.LastTokenIndex].Line;
-                StartColumn = $node.StartColumn;
-                Validated   = $validated;
-                Text        = $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty;
-                Additional  = $addtional     
-            })
-        $this.AnalysisCodeResults += $AnalysisCodeResult
+        $this.AnalysisCodeResults += [BaseRule]::GetAnalysisResult($node, $validated, $addtional)
     }
 
     static  [BaseRule[]] GetAllRules() {
-        return [Assembly]::GetAssembly([BaseRule]).GetTypes() | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } | ForEach-Object { New-Object $_ }
+        return [Assembly]::GetAssembly([BaseRule]).GetTypes() `
+        | Where-Object { $_ -ne [BaseRule] -and $_.BaseType -eq [BaseRule] } `
+        | ForEach-Object { New-Object $_ }
+    }
+
+    static [psobject] GetAnalysisResult([TSqlFragment] $node, [bool] $validated , [string] $addtional) {
+        return [PSCustomObject]([ordered]@{
+                StartLine   = $node.StartLine;
+                EndLine     = if ($node.LastTokenIndex -gt 0) { $node.ScriptTokenStream[$node.LastTokenIndex].Line } else { $node.LastTokenIndex }
+                StartColumn = $node.StartColumn;
+                Validated   = $validated;
+                Text        = if ($node.FragmentLength -gt 0) `
+                { $node.ScriptTokenStream[$node.FirstTokenIndex..$node.LastTokenIndex].Text -join [string]::Empty } `
+                    else { $null }
+                Additional  = $addtional     
+            })
     }
 }
 
@@ -281,7 +288,7 @@ class PDE005:BaseRule {
 
     [void]Visit([SelectStatement]$node) {
         if ($null -ne $node.Into) {
-            $this.Validate($node, $false, $null)
+            $this.Validate($node.Into, $false, $null)
         }
     }
 }
