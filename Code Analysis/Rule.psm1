@@ -72,7 +72,7 @@ class CustomParser {
         # }
     }
 
-    hidden [void]Validate([BaseRule] $rule, [bool]$locked) {
+    hidden [void]Validate([BaseRule] $rule, [bool]$lockeRule) {
         [psobject]$validationResult = [PSCustomObject]([ordered]@{
                 ResponseCode        = [ResponseCode]::Success;
                 ResponseMessage     = "Success";
@@ -84,7 +84,7 @@ class CustomParser {
             })
         $lockTaken = $false
         try {
-            if ($locked) { [Threading.Monitor]::Enter($rule.AnalysisCodeResults, [ref] $lockTaken) }
+            if ($lockeRule) { [Threading.Monitor]::Enter($rule.AnalysisCodeResults, [ref] $lockTaken) }
             $rule.AnalysisCodeResults = @()
             $this.Tree.Accept($rule)
             $validationResult.AnalysisCodeResults += $rule.AnalysisCodeResults
@@ -120,9 +120,7 @@ class CustomParser {
 
     static [psobject[]] Analysis([string[]]$files, [BaseRule[]]$rules) {
         $result = @()
-        foreach ($file in $files) {
-            $result += [CustomParser]::Analysis($file, $true, $rules)
-        }
+        foreach ($file in $files) { $result += [CustomParser]::Analysis($file, $true, $rules) }
         return $result
     }
 }
@@ -176,9 +174,8 @@ class PDE002 :BaseRule {
     }
    
     [void] Visit([UpdateDeleteSpecificationBase] $node) {
-        [ChildVisitor]$childVisitor = [ChildVisitor]::new()
-        $target = $node.Target
 
+        $target = $node.Target
         if ($null -ne $node.WhereClause) { return }
 
         if ($target -is [VariableTableReference]) { return }
@@ -189,9 +186,9 @@ class PDE002 :BaseRule {
 
         $fromClause = $node.FromClause
         if ($null -ne $fromClause) {
-            $fromClause.AcceptChildren($childVisitor)
-            $destTable = $childVisitor.TableAlias | Where-Object { $_.Alias -eq $targetTable } | Select-Object -First 1
-            if ($destTable.TableName -imatch "^(@|#{1,2}){1}") { return }
+            [TemporaryTableVisitor] $tempVisitor = [TemporaryTableVisitor]::new($fromClause, $targetTable)
+            $fromClause.AcceptChildren($tempVisitor)
+            if ($tempVisitor.Validated) { return }
             foreach ($tableReference in $fromClause.TableReferences) {
                 if ($tableReference -is [QualifiedJoin]) { return }
             }
@@ -210,12 +207,10 @@ class PDE003:BaseRule {
     hidden [int]$end = 0
 
     [void] Visit([UpdateDeleteSpecificationBase]$node) {
-        [ChildVisitor]$childVisitor = [ChildVisitor]::new()
-
         $target = $node.Target
 
         if ($target -is [VariableTableReference]) { return }
-
+        if ($this.CheckWhile($node)) { return }
         [NamedTableReference] $namedTableReference = $target -as [NamedTableReference]
         $targetTable = $namedTableReference.SchemaObject.BaseIdentifier.Value
         
@@ -223,33 +218,33 @@ class PDE003:BaseRule {
 
         $fromClause = $node.FromClause
         if ($null -ne $fromClause) {
-            $fromClause.Accept($childVisitor)
-            $destTable = $childVisitor.TableAlias | Where-Object { $_.Alias -eq $targetTable } | Select-Object -First 1
-            if ($destTable.TableName -imatch "^(@|#{1,2}){1}") { return }
+            [TemporaryTableVisitor]$tempVisitor = [TemporaryTableVisitor]::new($fromClause, $targetTable)
+            $fromClause.AcceptChildren($tempVisitor)
+            if ($tempVisitor.Validated) { return }
         }
-        $this.CheckWhile($node)
+        $this.Validate($node, $false, $null)
     }
 
     [void] Visit([InsertSpecification]$node) {
         $target = $node.Target
         if ($target -is [VariableTableReference]) { return }
-
+        if ($this.CheckWhile($node)) { return }
         $namedTableReference = $target -as [NamedTableReference]
         if ($namedTableReference.SchemaObject.BaseIdentifier.Value -imatch "^#{1,2}") { return }
         $valuesInsertSource = $node.InsertSource -as [ValuesInsertSource]
         if ($null -ne $valuesInsertSource) { return }
 
-        $this.CheckWhile($node)
+        $this.Validate($node, $false, $null)
     }
 
     [void] Visit([MergeSpecification]$node) {
         $target = $node.Target
-
+        if ( $this.CheckWhile($node)) { return }
         if ($target -is [VariableTableReference]) { return }
         $namedTableReference = $target -as [NamedTableReference]
         if ($namedTableReference.SchemaObject.BaseIdentifier.Value -imatch "^#{1,2}") { return }
-
-        $this.CheckWhile($node)   
+        $this.Validate($node, $false, $null)
+        
     }
 
     [void] Visit([WhileStatement]$node) {
@@ -257,10 +252,8 @@ class PDE003:BaseRule {
         $this.end = $node.ScriptTokenStream[$node.LastTokenIndex].Line
     }
 
-    hidden [void] CheckWhile([TSqlFragment] $node) {
-        if (-not ($node.StartLine -ge $this.start -and $node.ScriptTokenStream[$node.LastTokenIndex].Line -le $this.end)) {            
-            $this.Validate($node, $false, $null)
-        }
+    hidden [bool] CheckWhile([TSqlFragment] $node) {
+        return $node.StartLine -ge $this.start -and $node.ScriptTokenStream[$node.LastTokenIndex].Line -le $this.end
     }
 }
 
@@ -292,32 +285,41 @@ class PDE005:BaseRule {
         }
     }
 }
-class ChildVisitor:TSqlFragmentVisitor {    
-    $TableAlias = @()
+class TemporaryTableVisitor:TSqlFragmentVisitor {
+
+    [bool]$Validated = $false
+    hidden [string] $pattern = "^(@|#{1,2})"
+    hidden [FromClause]$fromClause
+    hidden [string]$target
+
+    TemporaryTableVisitor([FromClause]$fromClause, [string]$target) {
+        $this.fromClause = $fromClause
+        $this.target = $target
+        if ($null -eq $fromClause) { $this.Validated = $true }
+    }
+
     [void] Visit([NamedTableReference]$node) {
         $tableName = $node.SchemaObject.BaseIdentifier.Value
-        $alias = $tableName
-        if ($null -ne $node.Alias) {
-            $alias = $node.Alias.Value
+        $alias = $node.Alias.Value
+
+        if ($alias -ieq $this.target) {
+            $this.Validated = $this.Validated -or ($tableName -imatch $this.pattern)
         }
-        $this.TableAlias += [PSCustomObject]([ordered]@{
-                TableName = $tableName;
-                Alias     = $alias
-            })
+        elseif ($tableName -ieq $this.target) {
+            $this.Validated = $this.Validated -or ($tableName -imatch $this.pattern)
+        }       
     }
 
     [void] Visit([VariableTableReference]$node) {
         $tableName = $node.Variable.Name
-        $alias = $tableName
-        if ($null -ne $node.Alias) {
-            $alias = $node.Alias.Value
+        $alias = $node.Alias.Value
+        if ($alias -ieq $this.target) {
+            $this.Validated = $this.Validated -or ($tableName -imatch $this.pattern)
         }
-        $this.TableAlias += [PSCustomObject]([ordered]@{
-                TableName = $tableName;
-                Alias     = $alias
-            })
+        elseif ($tableName -ieq $this.target) {
+            $this.Validated = $this.Validated -or ($tableName -imatch $this.pattern)
+        }
     }
-
 }
 
 enum Severity {
