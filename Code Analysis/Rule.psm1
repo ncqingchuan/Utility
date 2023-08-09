@@ -75,15 +75,9 @@ class CustomParser {
             $this.AnalysisCodeSummary.ResponseMessage = "An error occurred while parsing the code."
             $this.AnalysisCodeSummary.ParseErrors = $errors
         }
-
-        # if ($null -ne $this.Tree) {
-        #     foreach ($batch in $this.Tree.Batches) {
-        #         $this.AnalysisCodeSummary.Batches += ($batch.ScriptTokenStream[$batch.FirstTokenIndex..$batch.LastTokenIndex].Text -join [string]::Empty)
-        #     }
-        # }
     }
 
-    hidden [void]Validate([BaseRule] $rule, [bool]$lockeRule) {
+    hidden [void]Validate([BaseRule] $rule, [bool]$lockRule) {
         [psobject]$validationResult = [PSCustomObject]([ordered]@{
                 ResponseCode        = [ResponseCode]::Success;
                 ResponseMessage     = "Success";
@@ -95,7 +89,7 @@ class CustomParser {
             })
         $lockTaken = $false
         try {
-            if ($lockeRule) { [Threading.Monitor]::Enter($rule.AnalysisCodeResults, [ref] $lockTaken) }
+            if ($lockRule) { [Threading.Monitor]::Enter($rule.AnalysisCodeResults, [ref] $lockTaken) }
             $rule.AnalysisCodeResults = @()
             $this.Tree.Accept($rule)
             $validationResult.AnalysisCodeResults += $rule.AnalysisCodeResults
