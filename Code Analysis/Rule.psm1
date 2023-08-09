@@ -5,6 +5,18 @@ using namespace System.IO
 using namespace Management.Automation
 using namespace System.Reflection
 
+enum Severity {
+    Information = 1
+    Warning = 2
+    Exception = 3
+    Fault = 4
+}
+
+enum ResponseCode {
+    Success = 0
+    Exception = 10001
+    ParseError = 10002
+}
 class CustomParser {
 
     hidden [TSqlParser] $TSqlParser
@@ -18,7 +30,6 @@ class CustomParser {
             IsDocument        = $true;
             ParseErrors       = [List[ParseError]]::new();
             ValidationResults = [List[psobject]]::new();
-            # Batches           = [string[]]@()
         })
 
     hidden [bool] $IsDocument
@@ -322,15 +333,4 @@ class TemporaryTableVisitor:TSqlFragmentVisitor {
     }
 }
 
-enum Severity {
-    Information = 1
-    Warning = 2
-    Exception = 3
-    Fault = 4
-}
 
-enum ResponseCode {
-    Success = 0
-    Exception = 10001
-    ParseError = 10002
-}
