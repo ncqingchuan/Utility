@@ -36,7 +36,6 @@ class CustomParser {
     hidden [string] $FileName
     hidden [string] $Code
 
-
     hidden CustomParser([SqlVersion]$version, [SqlEngineType]$engineType) {
         switch ($version) {
             [SqlVersion]::Sql120 { $this.TSqlParser = [TSql120Parser]::new($true) }
@@ -306,24 +305,17 @@ class TemporaryTableVisitor:TSqlFragmentVisitor {
     [void] Visit([NamedTableReference]$node) {
         $tableName = $node.SchemaObject.BaseIdentifier.Value
         $alias = $node.Alias.Value
-
-        if ($alias -ieq $this.target) {
+        if ($this.target -in $alias, $tableName) {
             $this.Validated = $this.Validated -or ($tableName -imatch $this.pattern)
-        }
-        elseif ($tableName -ieq $this.target) {
-            $this.Validated = $this.Validated -or ($tableName -imatch $this.pattern)
-        }       
+        }  
     }
 
     [void] Visit([VariableTableReference]$node) {
         $tableName = $node.Variable.Name
         $alias = $node.Alias.Value
-        if ($alias -ieq $this.target) {
+        if ($this.target -in $alias, $tableName) {
             $this.Validated = $this.Validated -or ($tableName -imatch $this.pattern)
-        }
-        elseif ($tableName -ieq $this.target) {
-            $this.Validated = $this.Validated -or ($tableName -imatch $this.pattern)
-        }
+        }  
     }
 }
 
